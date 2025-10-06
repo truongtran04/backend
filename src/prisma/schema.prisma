@@ -1,0 +1,162 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AppointmentStatus {
+  pending
+  confirmed
+  completed
+  cancelled
+  no_show
+}
+
+enum Role {
+  patient
+  doctor
+  admin
+}
+
+enum Gender {
+  male
+  female
+  other
+}
+
+model User {
+  user_id       String   @id @default(uuid())
+  email         String   @unique
+  password_hash String
+  role          Role     @default(patient)
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  passwordResetToken String?
+  passwordResetTokenExpires DateTime?
+  
+  Patient Patient?
+  Doctor  Doctor?
+
+  @@map("users")
+}
+
+model Patient {
+  patient_id              String        @id @default(uuid())
+  user_id                 String        @unique
+  full_name               String
+  identity_number         String?        @unique
+  phone_number            String
+  date_of_birth           DateTime
+  gender                  Gender
+  address                 String?
+  ethnicity               String?
+  health_insurance_number String?
+  referral_code           String?
+  occupation              String?
+  created_at              DateTime      @default(now())
+  updated_at              DateTime      @updatedAt
+  
+  User         User          @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+  Appointments Appointment[]
+
+  @@index([phone_number])
+  @@index([identity_number])
+
+  @@map("patients")
+}
+
+model Specialty {
+  specialty_id   String         @id @default(uuid())
+  name           String         @unique
+  description    String?
+  image_url      String?
+  created_at     DateTime       @default(now())
+  updated_at     DateTime       @updatedAt
+  
+  Doctors        Doctor[]
+
+  @@map("specialties")
+}
+
+
+model Doctor {
+  doctor_id        String           @id @default(uuid())
+  user_id          String           @unique
+  specialty_id     String
+  full_name        String
+  title            String?
+  introduction     String?
+  avatar_url       String?
+  specializations  String?
+  work_experience  String?
+  achievements     String?
+  experience_years Int?
+  is_available     Boolean          @default(true)
+  created_at       DateTime         @default(now())
+  updated_at       DateTime         @updatedAt
+  
+  User         User             @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+  Specialty    Specialty        @relation(fields: [specialty_id], references: [specialty_id])
+  Schedules    DoctorSchedule[]
+  Appointments Appointment[]
+
+  @@index([specialty_id])
+  @@index([is_available])
+
+  @@map("doctors")
+}
+
+model DoctorSchedule {
+  schedule_id   String        @id @default(uuid())
+  doctor_id     String
+  schedule_date DateTime
+  start_time    DateTime
+  end_time      DateTime
+  is_available  Boolean       @default(true)
+  created_at    DateTime      @default(now())
+  updated_at    DateTime      @updatedAt
+  
+  Doctor       Doctor        @relation(fields: [doctor_id], references: [doctor_id], onDelete: Cascade)
+  Appointments Appointment[]
+  
+  @@unique([doctor_id, schedule_date, start_time])
+  @@index([doctor_id, schedule_date])
+  @@index([schedule_date, is_available])
+
+  @@map("doctor_schedules")
+}
+
+model Appointment {
+  appointment_id     String            @id @default(uuid())
+  patient_id         String
+  doctor_id          String
+  schedule_id        String
+  symptoms           String?
+  notes              String?
+  status             AppointmentStatus @default(pending)
+  cancellation_reason String?
+  created_at         DateTime          @default(now())
+  updated_at         DateTime          @updatedAt
+  
+  Patient        Patient        @relation(fields: [patient_id], references: [patient_id])
+  Doctor         Doctor         @relation(fields: [doctor_id], references: [doctor_id])
+  DoctorSchedule DoctorSchedule @relation(fields: [schedule_id], references: [schedule_id])
+
+  @@unique([schedule_id])
+  @@index([patient_id])
+  @@index([doctor_id])
+  @@index([status])
+
+  @@map("appointments")
+}

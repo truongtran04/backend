@@ -1,0 +1,16 @@
+export interface Patient {
+    patient_id: string,
+    user_id: string,
+    full_name: string,
+    identity_number: string,
+    phone_number: string,
+    date_of_birth: Date,
+    gender: string,
+    address?: string | null,
+    ethnicity?: string | null,
+    health_insurance_number?: string | null,
+    referral_code?: string | null,
+    occupation?: string | null,
+    created_at: Date,
+    updated_at: Date,
+}
