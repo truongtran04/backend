@@ -12,10 +12,10 @@ export class EmailProcessor {
     ){}
 
     @Process('send-reset-email')
-    async handleSendResetEmail(job: Job<{email: string, token: string}>): Promise<void>{
+    async handleSendResetEmail(job: Job<{email: string, otp: string}>): Promise<void>{
         this.logger.log(`Bắt đầu xử lý email đặt lại mật khẩu cho job: ${job.data.email}`)
         try {
-            await this.mailService.sendForgotResetEmail(job.data.email, job.data.token)
+            await this.mailService.sendForgotResetEmail(job.data.email, job.data.otp)
 
         } catch (error) {
             this.logger.error(`Lỗi khi gửi email đặt lại mật khẩu cho ${job.data.email}: ${error instanceof Error ? error.message : 'Không xác định'}`)

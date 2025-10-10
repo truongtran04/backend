@@ -12,13 +12,20 @@ export class ValidationPipe implements PipeTransform<any> {
     }
 
     const object = plainToInstance(metatype, value)
-    const errors = await validate(object);
-
-    const formattedErrors = this.formatErrors(errors);
+    
+    const errors = await validate(object, {
+      whitelist: true,
+      forbidNonWhitelisted: true,
+    });
 
     if (errors.length > 0) {
-        const reponse = ApiResponse.error(formattedErrors, "Failed", HttpStatus.UNPROCESSABLE_ENTITY);
-        throw new HttpException(reponse, HttpStatus.UNPROCESSABLE_ENTITY);
+        const { errors: formattedErrors, message } = this.formatErrors(errors);
+        const response = ApiResponse.error(
+          formattedErrors, 
+          message,
+          HttpStatus.UNPROCESSABLE_ENTITY
+        );
+        throw new HttpException(response, HttpStatus.UNPROCESSABLE_ENTITY);
     }
     return value;
   }
@@ -28,13 +35,32 @@ export class ValidationPipe implements PipeTransform<any> {
     return !types.includes(metatype);
   }
 
-  private formatErrors(errors:ValidationError[]) {
+  private formatErrors(errors: ValidationError[]) {
     const result = {};
+    const messages: string[] = [];
+    
     errors.forEach((error) => {
-        if (error.constraints) {
-            result[error.property] = Object.values(error.constraints);
+      if (error.constraints) {
+
+        result[error.property] = Object.values(error.constraints);
+
+        let messageForThisField = '';
+
+        if (error.constraints['isNotEmpty']) {
+          messageForThisField = error.constraints['isNotEmpty'];
+        } else {
+          messageForThisField = Object.values(error.constraints)[0];
         }
-    })
-    return result;
+        
+        messages.push(messageForThisField);
+      }
+    });
+    
+    const combinedMessage = messages.join('\n');
+    
+    return {
+      errors: result,
+      message: combinedMessage || 'Dữ liệu không hợp lệ'
+    };
   }
 }

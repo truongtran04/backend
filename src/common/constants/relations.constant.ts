@@ -13,5 +13,9 @@ export const RELATIONS = {
   },
   SCHEDULE: {
     Doctor: true
+  },
+  USER: {
+    Patient: true,
+    Doctor: true
   }
 };

@@ -17,6 +17,7 @@ import { CreateUserDTO } from './dto/create-user.dto';
 import { ActiveUserGuard } from 'src/common/guards/active-user.guard';
 import { TModelOrPaginate } from 'src/common/bases/base.interface';
 import { IPaginateResult } from 'src/classes/query-builder.class';
+import { RELATIONS } from 'src/common/constants/relations.constant';
 
 
 const GUARD = common.admin
@@ -57,11 +58,14 @@ export class UserController extends BaseController<User, 'user_id', UserService>
     @Get(':id')
     @HttpCode(HttpStatus.OK)
     async show(
-        @Param('id') id: string
+        @Param('id') id: string,
+        @Req() req,
     ): Promise<TApiReponse<UserDTO>> {
-        const data: User = await this.userService.show(id)
+
+        const roleGroup = req.user.role
+        const data: User = await this.userService.show(id, RELATIONS.USER)
         return ApiResponse.suscess(
-            this.transformer.transformSingle(data, UserDTO),
+            this.transformer.transformSingle(data, UserDTO, [roleGroup]),
             'Success',
             HttpStatus.OK
         )

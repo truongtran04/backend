@@ -20,7 +20,7 @@ export class ResetPasswordRequest {
 
     @IsString({message: "Token phải là kiểu chuỗi"})
     @IsNotEmpty({message: "Token không được để trống"})
-    token: string;
+    otp: string;
 
     @IsString({message: "Mật khẩu phải là kiểu chuỗi"})
     @IsNotEmpty({message: "Mật khẩu không được để trống"})

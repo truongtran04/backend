@@ -6,7 +6,7 @@ import { RegisterDTO } from "./dto/register.dto";
 
 export interface ILoginResponse {
     accessToken: string,
-    crsfToken: string,
+    csrfToken: string,
     expiresAt: number,
     tokenType: string,
 }
@@ -24,7 +24,7 @@ export interface ITokenContext {
     deviceId: string,
     accessToken?: string,
     refreshToken?: string,
-    crsfToken?: string,
+    csrfToken?: string,
     sessionId?: string,
     guard: string,
     session?: ISessionData | null,
@@ -36,7 +36,7 @@ export interface ISessionData {
     userId: string,
     deviceId: string,
     refreshToken: string,
-    crsfToken: string,
+    csrfToken: string,
     createdAt: number,
     lastUsed: number,
     wasUsed: boolean,
@@ -47,8 +47,8 @@ export interface ISessionData {
 export interface IForgotPasswordContext {
     email: string,
     user?: User,
-    resetToken?: string,
-    hashedToken?: string,
+    resetOTP?: string,
+    hashedOTP?: string,
     expiresAt?: Date
 }
 

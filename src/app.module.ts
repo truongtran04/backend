@@ -32,6 +32,25 @@ import { AppointmentModule } from './modules/appointments/appointment.module';
     DoctorModule,
     ScheduleModule,
     AppointmentModule,
+    ConfigModule.forRoot({
+      isGlobal: true,
+    }),
+    CacheModule.registerAsync({
+      isGlobal: true,
+      useFactory: () => {
+        return {
+           stores: [
+            // new Keyv({
+            //   store: new CacheableMemory({ ttl: 60000, lruSize: 5000 }),
+            //   namespace: 'nestjs-memory-cache',
+            // }),
+            createKeyv('redis://localhost:6379/1',{ 
+              namespace: 'nestjs_new_cache' 
+            }),
+          ],
+        };
+      }
+    }),
     BullModule.forRootAsync({
       imports:[ConfigModule],
       useFactory: (configService: ConfigService) => ({
@@ -47,25 +66,7 @@ import { AppointmentModule } from './modules/appointments/appointment.module';
       }),
       inject: [ConfigService]
     }),
-    ConfigModule.forRoot({
-      isGlobal: true,
-    }),
-    CacheModule.registerAsync({
-      isGlobal: true,
-      useFactory: () => {
-        return {
-           stores: [
-            new Keyv({
-              store: new CacheableMemory({ ttl: 60000, lruSize: 5000 }),
-              namespace: 'nestjs-memory-cache',
-            }),
-            createKeyv('redis://localhost:6379/1',{ 
-              namespace: 'nestjs-cache' 
-            }),
-          ],
-        };
-      }
-    }),
+    
   ],
   controllers: [AppController],
   providers: [

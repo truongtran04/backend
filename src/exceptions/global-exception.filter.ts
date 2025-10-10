@@ -33,7 +33,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
                     error = reponseObject.error;
                 }
 
-                if(reponseObject.status !== undefined && reponseObject.cade !== undefined){
+                if(reponseObject.status !== undefined && reponseObject.code !== undefined){
                     response.status(status).json(exceptionResponse);
                     return;
                 }

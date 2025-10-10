@@ -31,6 +31,7 @@ export class AppointmentDTO {
 
     @Expose()
     symptoms?: string;
+
     @Expose()
     notes?: string;
 

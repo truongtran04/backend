@@ -17,7 +17,6 @@ import { MailService } from '../mail/mail.service';
 import * as crypto from 'crypto'
 import { QueueService } from '../queue/queue.service';
 import { RegisterDTO } from './dto/register.dto';
-import { Patient } from '../patients/patient.interface';
 import { PatientService } from '../patients/patient.service';
 
 
@@ -27,9 +26,8 @@ const REFRESH_TOKEN_TIME_TO_LIVE = 30 * 24 * 60 * 60 * 1000; // 30 ngày
 const MAX_SESSIONS_PER_USER = 5; // Giới hạn số phiên đăng nhập tối đa cho mỗi người dùng
 const REFRESH_TOKEN_COOKIE_NAME = 'nestjs_refresh_token';
 
-const PASSWORD_RESET_MAX_ATTEMPS = 5 //Số lần tối đa trong 1 khung thời gian
-const PASSWORD_RESET_WINDOW = 60 * 60 * 1000 // 1 giờ tính bằng giây
-const PASSWORD_RESET_LOCKOUT = 24 * 60 * 60 * 1000 // thời gian khóa 24 giờ
+const PASSWORD_RESET_MAX_ATTEMPS = 10 //Số lần tối đa trong 1 khung thời gian
+const PASSWORD_RESET_LOCKOUT = 60 * 60 * 1000 // thời gian khóa 24 giờ
 
 @Injectable()
 export class AuthService {
@@ -56,7 +54,7 @@ export class AuthService {
         .then(context => this.revokExistingDeviceSession(context))
         .then(context => this.generateAccessToken(context))
         .then(context => this.generateRefreshToken(context))
-        .then(context => this.generateCrsfToken(context))
+        .then(context => this.generateCsrfToken(context))
         .then(context => this.saveSession(context))
         .then(context => this.authReponse(context, response));
     } catch (error) {
@@ -71,6 +69,27 @@ export class AuthService {
       deviceId: this.generateDeviceId(request),
       guard: guard,
     })
+  }
+
+  private async validateUser(context: ITokenContext): Promise<ITokenContext> {
+
+    const { email, password } = context.authRequest;
+
+    const user = await this.prismaService.user.findUnique({
+      where: { email },
+    });
+
+    if(!user || !await bcrypt.compare(password, user.password_hash)){
+      throw new UnauthorizedException('Email hoặc mật khẩu không đúng');
+    }
+
+    if (!user.is_active) {
+      throw new UnauthorizedException('Tài khoản của bạn chưa được kích hoạt');
+    }
+
+    const { password_hash: _, ...userWithoutPassword } = user;
+    context.user = userWithoutPassword as UserWithoutPassword;
+    return context;
   }
 
   private generateDeviceId(request: Request) : string {
@@ -129,14 +148,14 @@ export class AuthService {
     return Promise.resolve(context);
   }
 
-  private async generateCrsfToken(context: ITokenContext): Promise<ITokenContext> {
-    context.crsfToken = randomBytes(32).toString('hex');
+  private async generateCsrfToken(context: ITokenContext): Promise<ITokenContext> {
+    context.csrfToken = randomBytes(32).toString('hex');
     return Promise.resolve(context);
   }
   
   private async saveSession(context: ITokenContext): Promise<ITokenContext> {
-    const { user, deviceId, refreshToken, crsfToken } = context;
-    if(!user || !deviceId || !refreshToken || !crsfToken) {
+    const { user, deviceId, refreshToken, csrfToken } = context;
+    if(!user || !deviceId || !refreshToken || !csrfToken) {
       throw new Error('Thiếu thông tin để lưu phiên');
     }
     const sessionId = randomBytes(16).toString('hex');
@@ -144,7 +163,7 @@ export class AuthService {
       userId: user.user_id,
       deviceId,
       refreshToken,
-      crsfToken,
+      csrfToken,
       createdAt: Date.now(),
       lastUsed: Date.now(),
       wasUsed: false,
@@ -152,19 +171,18 @@ export class AuthService {
       expiresAt: Date.now() + REFRESH_TOKEN_TIME_TO_LIVE * 1000, // 30 ngày
     }
 
-    const userSessions: string[] = (await this.cacheManager.get(`user:${user.user_id}:sessions`)) ?? [];
+    const userSessions: string[] = (await this.cacheManager.get(`user:${user.user_id}:sessions:${context.guard}`)) ?? [];
     if(userSessions.length >= MAX_SESSIONS_PER_USER){
       await this.removeOldestSession(user.user_id, userSessions, context);
     }
 
-    Promise.all([
+    await Promise.all([
       this.cacheManager.set(`session:${sessionId}:${context.guard}`, sessionData, REFRESH_TOKEN_TIME_TO_LIVE),
       this.cacheManager.set(`refresh_token:${refreshToken}:${context.guard}`, sessionId, REFRESH_TOKEN_TIME_TO_LIVE),
       this.cacheManager.set(`user:${user.user_id}:sessions:${context.guard}`, [...userSessions, sessionId]),
     ])
 
-    context.sessionId = sessionId;
-
+    context.sessionId = sessionId
     return context;
   }
 
@@ -192,9 +210,9 @@ export class AuthService {
   }
 
   private async authReponse(context: ITokenContext, response: Response): Promise<ILoginResponse> {
-    const { accessToken, crsfToken } = context;
-    if(!accessToken || !crsfToken) {
-      throw new Error('Thiếu thông tin accessToken hoặc crsfToken để tạo phản hồi xác thực');
+    const { accessToken, csrfToken } = context;
+    if(!accessToken || !csrfToken) {
+      throw new Error('Thiếu thông tin accessToken hoặc csrfToken để tạo phản hồi xác thực');
     }
     const decoded = this.jwtService.decode<IJwtPayload>(accessToken);
     const expiresAt = decoded.exp - Math.floor(Date.now() / 1000);
@@ -204,42 +222,25 @@ export class AuthService {
       secure: false,
       sameSite: 'lax',
       maxAge: REFRESH_TOKEN_TIME_TO_LIVE * 1000,
-      path: 'v1/auth/refresh'
+      path: '/'
     })
 
     return {
       accessToken,
-      crsfToken,
+      csrfToken,
       expiresAt : expiresAt,
       tokenType : 'Bearer',
     }
   }
 
-  private async validateUser(context: ITokenContext): Promise<ITokenContext> {
-
-    const { email, password } = context.authRequest;
-
-    const user = await this.prismaService.user.findUnique({
-      where: { email },
-    });
-
-    if(!user || !await bcrypt.compare(password, user.password_hash)){
-      throw new UnauthorizedException('Email hoặc mật khẩu không đúng');
-    }
-
-    const { password_hash: _, ...userWithoutPassword } = user;
-    context.user = userWithoutPassword as UserWithoutPassword;
-    return context;
-  }
-
   async refreshToken(request: Request, guard: string, response: Response): Promise<ILoginResponse>{
     try {
       const refreshTokenCookie: string | undefined = request.cookies[REFRESH_TOKEN_COOKIE_NAME] as string | undefined
-      const crsfToken = request.headers['x_crsf_token'] as string
-      
+      const csrfToken = request.headers['x-csrf-token'] as string
+
       const context: ITokenContext = {
         refreshToken: refreshTokenCookie,
-        crsfToken: crsfToken,
+        csrfToken: csrfToken,
         guard: guard,
         authRequest: {} as LoginDTO,
         user: null,
@@ -250,14 +251,14 @@ export class AuthService {
         .then((context) => this.validateTokens(context))
         .then((context) => this.findSessionId(context))
         .then((context) => this.getSessionData(context))
-        .then((context) => this.validateCrsfToken(context))
+        .then((context) => this.validateCsrfToken(context))
         .then((context) => this.checkSessionRevocation(context))
         .then((context) => this.checkSessionExpiration(context))
         .then((context) => this.getUser(context))
         .then((context) => this.markSessionAsUsed(context))
         .then((context) => this.generateAccessToken(context))
         .then((context) => this.generateRefreshToken(context))
-        .then((context) => this.generateCrsfToken(context))
+        .then((context) => this.generateCsrfToken(context))
         .then((context) => this.saveSession(context))
         .then((context) => this.authReponse(context, response))
     } catch (error) {
@@ -266,8 +267,11 @@ export class AuthService {
   }
 
   private async validateTokens(context: ITokenContext): Promise<ITokenContext>{
-    if(!context.crsfToken || !context.refreshToken){
-      throw new UnauthorizedException("Thiếu Refresh Token hoặc CRSF Token")
+    if(!context.csrfToken){
+      throw new UnauthorizedException("Thiếu CSRF Token")
+    }
+    if(!context.refreshToken){
+      throw new UnauthorizedException("Thiếu Refresh Token")
     }
     return Promise.resolve(context)
   }
@@ -292,15 +296,15 @@ export class AuthService {
     return context
   }
 
-  private validateCrsfToken(context: ITokenContext): Promise<ITokenContext>{
-    const { session, crsfToken } = context
+  private validateCsrfToken(context: ITokenContext): Promise<ITokenContext>{
+    const { session, csrfToken } = context
 
-    if(!session || !crsfToken){
-      throw new UnauthorizedException("Thiếu thông tin session hoặc CrsfToken trong context")
+    if(!session || !csrfToken){
+      throw new UnauthorizedException("Thiếu thông tin session hoặc CsrfToken trong context")
     }
 
-    if(session.crsfToken !== crsfToken){
-      throw new UnauthorizedException("Crsf Token không chính xác")
+    if(session.csrfToken !== csrfToken){
+      throw new UnauthorizedException("Csrf Token không chính xác")
     }
 
     return Promise.resolve(context)
@@ -415,7 +419,7 @@ export class AuthService {
         secure: false,
         sameSite: "lax",
         maxAge: 0,
-        path: '/v1/auth/refresh'
+        path: '/'
       })
       throw new InternalServerErrorException("Lỗi khi đăng xuất")
     }
@@ -489,7 +493,7 @@ export class AuthService {
       secure: false,
       sameSite: "lax",
       maxAge: 0,
-      path: '/v1/auth/refresh'
+      path: '/'
     })
 
     return Promise.resolve(context)
@@ -527,8 +531,8 @@ export class AuthService {
       return await Promise.resolve(context)
         .then((context) => this.checkPasswordResetRateLimit(context))
         .then((context) => this.checkEmailExists(context))
-        .then((context) => this.generateResetToken(context))
-        .then((context) => this.saveResetToken(context))
+        .then((context) => this.generateResetOTP(context))
+        .then((context) => this.saveResetOTP(context))
         .then((context) => this.sendResetMail(context))
         .then((context) => this.getResponse(context))
 
@@ -553,9 +557,9 @@ export class AuthService {
     console.log(newEmailAttempts, PASSWORD_RESET_MAX_ATTEMPS);
 
     if(newEmailAttempts > PASSWORD_RESET_MAX_ATTEMPS) {
-        this.logger.warn(`Email ${context.email} đã vượt quá giới hạn yêu cầu đặt lại mật khẩu. Đã khóa chức năng trong 24 tiếng`)
+        this.logger.warn(`Email ${context.email} đã vượt quá giới hạn yêu cầu đặt lại mật khẩu. Đã khóa chức năng trong 1 tiếng`)
         await this.cacheManager.set(`${emailCacheKey}:locked`, true, PASSWORD_RESET_LOCKOUT)
-        throw new InternalServerErrorException('Quá nhiều yêu cầu đặt lại mật khẩu, Hãy thử lại sau 24 giờ')
+        throw new InternalServerErrorException('Quá nhiều yêu cầu đặt lại mật khẩu, Hãy thử lại sau 1 giờ')
     }
     return context
   }
@@ -569,84 +573,84 @@ export class AuthService {
     return context
   }
 
-  private async generateResetToken(context: IForgotPasswordContext): Promise<IForgotPasswordContext>{
+  private async generateResetOTP(context: IForgotPasswordContext): Promise<IForgotPasswordContext>{
     if(!context.user) return context
 
-    const resetToken = randomBytes(32).toString('hex')
-    const hasedToken = crypto.createHash('sha256').update(resetToken).digest('hex')
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000)
+    const resetOTP = Math.floor(Math.random() * 1_000_000).toString().padStart(6, '0');
+    const hashedOTP = crypto.createHash('sha256').update(resetOTP).digest('hex')
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000) // thoi gian hết hạn là 1 giờ
 
-    context.resetToken = resetToken
-    context.hashedToken = hasedToken
+    context.resetOTP = resetOTP
+    context.hashedOTP = hashedOTP
     context.expiresAt = expiresAt
 
     return Promise.resolve(context)
   }
 
-  private async saveResetToken(context: IForgotPasswordContext): Promise<IForgotPasswordContext>{
+  private async saveResetOTP(context: IForgotPasswordContext): Promise<IForgotPasswordContext>{
     try {
-      if(!context.user || !context.hashedToken ||  !context.resetToken) return context
+      if(!context.user || !context.resetOTP ||  !context.hashedOTP) return context
       await this.userService.save({
-        passwordResetToken: context.hashedToken,
-        passwordResetTokenExpires: context.expiresAt
+        passwordResetOTP: context.hashedOTP,
+        passwordResetOTPExpires: context.expiresAt
       }, context.user.user_id)
-      this.logger.log(`Đã tạo và lưu resetToken vào database cho người dùng ${context.user.user_id}`)
+      this.logger.log(`Đã tạo và lưu mã OTP vào database cho người dùng ${context.user.user_id}`)
       return context
     } catch (error) {
-      this.logger.error(`Lỗi khi lưu token đặt lại mật khẩu: ${error instanceof Error ? error.message : 'Không xác định'}`)
+      this.logger.error(`Lỗi khi lưu mã OTP đặt lại mật khẩu: ${error instanceof Error ? error.message : 'Không xác định'}`)
       throw new InternalServerErrorException('Không thể xử lý yêu cầu đặt lại mật khẩu')
     }
   }
 
   private async sendResetMail(context: IForgotPasswordContext): Promise<IForgotPasswordContext> {
     try {
-      if(!context.resetToken){
-          throw new BadRequestException('Tạo mã reset mật khẩu không thành công')
+      if(!context.resetOTP){
+          throw new BadRequestException('Tạo mã OTP không thành công')
       }
-      
-      await this.queueService.addJob<{email: string, token: string}>('send-reset-email', {
+    
+      await this.queueService.addJob<{email: string, otp: string}>('send-reset-email', {
           email: context.email,
-          token: context.resetToken,
+          otp: context.resetOTP,
       }, undefined)
 
       // await this.mailService.sendForgotResetEmail(context.email, context.resetToken)
       this.logger.log(`Đã thêm Email vào hàng đợi từ : AuthService`);
       return context
     } catch (error) {
-      this.logger.error(`Lỗi khi lưu token đặt lại mật khẩu: ${error instanceof Error ? error.message : 'Không xác định'}`)
+      this.logger.error(`Lỗi khi lưu mã OTP đặt lại mật khẩu: ${error instanceof Error ? error.message : 'Không xác định'}`)
       return context
     }
   }
 
   private async getResponse(context: IForgotPasswordContext): Promise<{message: string}> {
-    if(context.hashedToken) delete context.hashedToken
-    if(context.resetToken) delete context.resetToken
+    if(context.hashedOTP) delete context.hashedOTP
+    if(context.resetOTP) delete context.resetOTP
 
     return Promise.resolve({message: `Bạn sẽ nhận được Email hướng dẫn đặt lại mật khẩu tại địa chỉ  ${context.email}. Hãy làm theo hướng dẫn`})
   }
 
-  async verifyResetToken(token: string): Promise<{message: string}> {
-    const hasedToken = crypto.createHash('sha256').update(token).digest('hex')
-    const user = await this.userService.findResetToken(hasedToken)
+  async verifyResetToken(otp: string): Promise<{message: string}> {
+    const hashedOTP = crypto.createHash('sha256').update(otp).digest('hex')
+    const user = await this.userService.findResetToken(hashedOTP)
     if(!user){
-      throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn')
+      throw new BadRequestException('OTP không hợp lệ hoặc đã hết hạn')
     }
 
-    return Promise.resolve({message: 'Verify Reset Token thành công'})
+    return Promise.resolve({message: 'Verify Reset OTP thành công'})
   }
 
-  async resetPassword(token: string, password: string): Promise<{message: string}> {
-    const hasedToken = crypto.createHash('sha256').update(token).digest('hex')
-    const user = await this.userService.findResetToken(hasedToken)
+  async resetPassword(otp: string, password: string): Promise<{message: string}> {
+    const hashedOTP = crypto.createHash('sha256').update(otp).digest('hex')
+    const user = await this.userService.findResetToken(hashedOTP)
 
     if(!user){
-      throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn')
+      throw new BadRequestException('OTP không hợp lệ hoặc đã hết hạn')
     }
 
     const payload = {
       password_hash: await bcrypt.hash(password, 10),
-      passwordResetToken: null,
-      passwordResetTokenExpires: null
+      passwordResetOTP: null,
+      passwordResetOTPExpires: null
     }
 
     await this.userService.save(payload, user.user_id)

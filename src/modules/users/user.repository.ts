@@ -11,22 +11,22 @@ export class UserRepository extends BaseRepository<typeof PrismaService.prototyp
         super(prisma.user, 'user_id')
     }
 
-    async isValidResetToken(token: string): Promise<User | null> {
+    async isValidResetToken(otp: string): Promise<User | null> {
         return await this.model.findFirstOrThrow({
             where: {
-                passwordResetToken: token,
-                passwordResetTokenExpires: {
+                passwordResetOTP: otp,
+                passwordResetOTPExpires: {
                     gt: new Date()
                 }
             }
         })
     }
 
-    async isValidActive(token: string): Promise<User | null> {
+    async isValidActive(otp: string): Promise<User | null> {
         return await this.model.findFirstOrThrow({
             where: {
-                passwordResetToken: token,
-                passwordResetTokenExpires: {
+                passwordResetOTP: otp,
+                passwordResetOTPExpires: {
                     gt: new Date()
                 },
                 is_active: false

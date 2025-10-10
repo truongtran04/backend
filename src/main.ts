@@ -2,13 +2,15 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './exceptions/global-exception.filter';
 import cookieParser from 'cookie-parser';
-import { ValidationPipe } from '@nestjs/common';
 import { MinimalLogger } from './common/logger/minimal-logger';
+import { useContainer } from 'class-validator';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     logger: new MinimalLogger()
   });
+
+  // const app = await NestFactory.create(AppModule);
   
   app.useGlobalFilters(new GlobalExceptionFilter());
   app.enableCors({
@@ -18,13 +20,7 @@ async function bootstrap() {
   
   app.use(cookieParser())
 
-  app.useGlobalPipes(
-    new ValidationPipe({
-      transform: true, 
-      whitelist: true,
-      forbidNonWhitelisted: true
-    }),
-  )
+  useContainer(app.select(AppModule), { fallbackOnErrors: true });
 
   await app.listen(process.env.PORT ?? 3000);
 }

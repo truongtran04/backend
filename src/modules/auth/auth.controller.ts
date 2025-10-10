@@ -14,6 +14,7 @@ import { IUserResponse } from '../users/user.interface';
 import { ForgotPasswordDTO } from './dto/forgot-password.dto';
 import { ResetPasswordRequest } from './dto/reset-password.dto';
 import { RegisterDTO } from './dto/register.dto';
+import { ActiveUserGuard } from 'src/common/guards/active-user.guard';
 
 const GUARD = common.admin
 
@@ -55,7 +56,6 @@ export class AuthController {
   ): Promise<TApiReponse<IUserResponse>> {
     try {
       const auth = (request.user as { userId: string })
-      console.log(auth)
       const user = await this.userService.findById(auth.userId)
 
       if (!user) {
@@ -70,6 +70,7 @@ export class AuthController {
         createdAt: user.created_at,
         updatedAt: user.updated_at
       }
+      
       return ApiResponse.suscess(userWithoutPassword, "Success!", HttpStatus.OK);
     } catch (err) {
       throw err
@@ -109,12 +110,12 @@ export class AuthController {
     return ApiResponse.message(res.message, HttpStatus.OK)
   }
 
-  @Get('/verify-reset-token/:token')
+  @Get('/verify-reset-otp/:otp')
   @HttpCode(HttpStatus.OK)
   async verifyResetToken(
-    @Param('token') token: string,
+    @Param('otp') otp: string,
   ): Promise<TApiReponse<string>> {
-    const res = await this.authService.verifyResetToken(token)
+    const res = await this.authService.verifyResetToken(otp)
     return ApiResponse.message(res.message, HttpStatus.OK)
   }
 
@@ -123,7 +124,7 @@ export class AuthController {
   async resetPassword(
     @Body(new ValidationPipe()) resetPasswordRequest: ResetPasswordRequest
   ): Promise<TApiReponse<string>> {
-    const res = await this.authService.resetPassword(resetPasswordRequest.token, resetPasswordRequest.password)
+    const res = await this.authService.resetPassword(resetPasswordRequest.otp, resetPasswordRequest.password)
     return ApiResponse.message(res.message, HttpStatus.OK)
   }
 

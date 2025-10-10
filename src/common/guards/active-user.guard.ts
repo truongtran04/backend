@@ -11,6 +11,7 @@ export class ActiveUserGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
+    
     const userFromToken = request.user;
 
     if (!userFromToken || !userFromToken.userId) {

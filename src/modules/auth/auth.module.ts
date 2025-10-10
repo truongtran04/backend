@@ -9,7 +9,6 @@ import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { MailModule } from '../mail/mail.module';
 import { QueueModule } from '../queue/queue.module';
-import { CacheModule } from '@nestjs/cache-manager';
 import { PatientModule } from '../patients/patient.module';
 
 @Module({
@@ -23,7 +22,6 @@ import { PatientModule } from '../patients/patient.module';
     UserModule,
     MailModule,
     QueueModule,
-    CacheModule.register(),
     PatientModule
   ],
   controllers: [AuthController],

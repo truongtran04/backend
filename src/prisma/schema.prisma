@@ -42,8 +42,8 @@ model User {
   created_at    DateTime @default(now())
   updated_at    DateTime @updatedAt
 
-  passwordResetToken String?
-  passwordResetTokenExpires DateTime?
+  passwordResetOTP String?
+  passwordResetOTPExpires DateTime?
   
   Patient Patient?
   Doctor  Doctor?
