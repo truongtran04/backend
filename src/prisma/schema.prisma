@@ -76,18 +76,18 @@ model Patient {
   @@map("patients")
 }
 
-model Specialty {
-  specialty_id   String         @id @default(uuid())
-  name           String         @unique
-  description    String?
-  image_url      String?
-  created_at     DateTime       @default(now())
-  updated_at     DateTime       @updatedAt
-  
-  Doctors        Doctor[]
+  model Specialty {
+    specialty_id   String         @id @default(uuid())
+    name           String         @unique
+    description    String?
+    image_url      String?
+    created_at     DateTime       @default(now())
+    updated_at     DateTime       @updatedAt
+    
+    Doctors        Doctor[]
 
-  @@map("specialties")
-}
+    @@map("specialties")
+  }
 
 
 model Doctor {

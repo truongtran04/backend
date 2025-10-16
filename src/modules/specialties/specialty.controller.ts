@@ -44,7 +44,7 @@ export class SpecialtyController extends BaseController<Specialty, 'specialty_id
     async create(
          @Body(new ValidationPipe()) createRequest: CreateSpecialtyDTO,
     ) : Promise<TApiReponse<SpecialtyDTO>> {
-        const data: Specialty = await this.specialtyService.save<CreateSpecialtyDTO>(createRequest)
+        const data: Specialty = await this.specialtyService.create(createRequest)
         return ApiResponse.suscess(
             this.transformer.transformSingle(data, SpecialtyDTO),
             'Success', 
@@ -62,7 +62,7 @@ export class SpecialtyController extends BaseController<Specialty, 'specialty_id
         @Param('id') id: string,
         @Req() req: Request
     ): Promise<TApiReponse<SpecialtyDTO>>{
-        const data: Specialty = await this.specialtyService.save(updateRequest, id)
+        const data: Specialty = await this.specialtyService.update(updateRequest, id)
         return ApiResponse.suscess(
             this.transformer.transformSingle(data, SpecialtyDTO),
             'Success', 
@@ -80,7 +80,7 @@ export class SpecialtyController extends BaseController<Specialty, 'specialty_id
         @Param('id') id: string,
         @Req() req: express.Request
     ): Promise<TApiReponse<SpecialtyDTO>>{
-        const data: TResult<Specialty> = await this.specialtyService.save(updateRequest, id)
+        const data: TResult<Specialty> = await this.specialtyService.update(updateRequest, id)
         return ApiResponse.suscess(
             this.transformer.transformSingle(data, SpecialtyDTO), 
             'Success', 
@@ -96,8 +96,8 @@ export class SpecialtyController extends BaseController<Specialty, 'specialty_id
     async destroy(
         @Param('id') id: string
     ): Promise<ApiResponse>{
-        await this.specialtyService.destroy(id)
-        return ApiResponse.message('Xóa bản ghi thành công', HttpStatus.OK)
+        const res = await this.specialtyService.delete(id)
+        return ApiResponse.message(res.message, HttpStatus.OK)
 
     }
 

@@ -5,11 +5,13 @@ import { SpecialtyRepository } from './specialty.repository';
 import { SpecialtyService } from './specialty.service';
 import { SpecialtyController } from './specialty.controller';
 import { UserModule } from '../users/user.module';
+import { SupabaseModule } from '../supabase/supabase.module';
 
 @Module({
   imports: [
     ValidateModule,
-    forwardRef(() => UserModule)
+    forwardRef(() => UserModule),
+    SupabaseModule
   ],
   controllers: [SpecialtyController],
   providers: [SpecialtyRepository, SpecialtyService, DataTransformer],
