@@ -56,8 +56,8 @@ export interface IRegisterContext {
     authRequest: RegisterDTO
     user?: User,
     patient?: Patient,
-    confirmToken?: string,
-    hashedConfirmToken?: string,
+    confirmOTP?: string,
+    hashedConfirmOTP?: string,
     hashedPassword?: string,
     expiresAt?: Date,
     emailVerificationSent?: boolean

@@ -9,11 +9,11 @@ export class DoctorDTO {
     @Expose()
     user_id: string;
     
-    @Expose()
+    @Expose({ groups: ['doctor', 'admin', 'patient'] })
     @Transform(({ obj }) => obj.User.email ?? null)
     email: string;
 
-    @Expose()
+    @Expose({ groups: ['doctor', 'admin', 'patient'] })
     @Transform(({ obj }) => obj.Specialty.name ?? null)
     specialty_name: string;
 

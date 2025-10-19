@@ -106,15 +106,17 @@ export class DoctorController extends BaseController<Doctor, 'doctor_id', Doctor
 
     @GuardType(GUARD)
     @UseGuards(JwtAuthGuard, ActiveUserGuard, RolesGuard)
-    @Roles('admin', 'doctor')
+    @Roles('admin', 'doctor', 'patient')
     @Get(':id')
     @HttpCode(HttpStatus.OK)
     async show(
-        @Param('id') id: string
+        @Param('id') id: string,
+        @Req() req
     ): Promise<TApiReponse<DoctorDTO>>{
+        const role = req.user.role
         const data: Doctor = await this.doctorService.show(id, RELATIONS.DOCTOR)
         return ApiResponse.suscess(
-            this.transformer.transformSingle(data, DoctorDTO), 
+            this.transformer.transformSingle(data, DoctorDTO, [role]), 
             'Success', 
             HttpStatus.OK
         )
@@ -122,17 +124,19 @@ export class DoctorController extends BaseController<Doctor, 'doctor_id', Doctor
 
     @GuardType(GUARD)
     @UseGuards(JwtAuthGuard, ActiveUserGuard, RolesGuard)
-    @Roles('admin')
+    @Roles('admin', 'patient', 'doctor')
     @Get()
     @HttpCode(HttpStatus.OK)
     async paginate(
-        @Query() query: Record<string, any>
+        @Query() query: Record<string, any>,
+        @Req() req
     ): Promise<TApiReponse<TModelOrPaginate<DoctorDTO>>> {
+        const role = req.user.role
         const data: Doctor[] | IPaginateResult<Doctor> = await this.doctorService.paginate(query, RELATIONS.DOCTOR)
         
         const dataTransform: TModelOrPaginate<DoctorDTO> = Array.isArray(data)
-                    ? this.transformer.transformArray(data, DoctorDTO)
-                    : this.transformer.transformPaginated(data, DoctorDTO)
+                    ? this.transformer.transformArray(data, DoctorDTO , [role])
+                    : this.transformer.transformPaginated(data, DoctorDTO, [role])
 
         return ApiResponse.suscess(
             dataTransform,

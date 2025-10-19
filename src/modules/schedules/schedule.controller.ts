@@ -52,7 +52,7 @@ export class ScheduleController extends BaseController<DoctorSchedule, 'schedule
 
     @GuardType(GUARD)
     @UseGuards(JwtAuthGuard, ActiveUserGuard, RolesGuard)
-    @Roles('admin', 'doctor')
+    @Roles('admin', 'doctor', 'patient')
     @Get(':id')
     @HttpCode(HttpStatus.OK)
     async show(

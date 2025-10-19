@@ -31,7 +31,6 @@ export class UserService extends BaseService<UserRepository, User> {
         simpleFilter: ['user_id', 'role', 'is_active'], // Các field có thể filter đơn giản
         dateFilter: ['created_at', 'updated_at'], // Các field date có thể filter
         fieldTypes: {
-          // Định nghĩa kiểu dữ liệu cho các field
           user_id: 'string',
           role: 'string',
           is_active: 'boolean',

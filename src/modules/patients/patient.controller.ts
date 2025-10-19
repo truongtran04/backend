@@ -36,7 +36,7 @@ export class PatientController extends BaseController<Patient, 'patient_id', Pat
 
     @GuardType(GUARD)
     @UseGuards(JwtAuthGuard, ActiveUserGuard, RolesGuard)
-    @Roles('admin', 'patient')
+    @Roles('admin', 'patient', 'doctor')
     @Get(':id')
     @HttpCode(HttpStatus.OK)
     async show(
@@ -70,7 +70,7 @@ export class PatientController extends BaseController<Patient, 'patient_id', Pat
 
     @GuardType(GUARD)
     @UseGuards(JwtAuthGuard, ActiveUserGuard, RolesGuard)
-    @Roles('admin')
+    @Roles('admin', 'doctor')
     @Get()
     @HttpCode(HttpStatus.OK)
     async paginate(

@@ -663,8 +663,8 @@ export class AuthService {
         authRequest,
         user: undefined,
         patient: undefined,
-        confirmToken: undefined,
-        hashedConfirmToken: undefined,
+        confirmOTP: undefined,
+        hashedConfirmOTP: undefined,
         expiresAt: undefined,
         emailVerificationSent: false
       };
@@ -747,7 +747,6 @@ export class AuthService {
       return context;
     } catch (error) {
       this.logger.error('Failed to save basic patient:', error);
-      // Nếu tạo patient thất bại, xóa user đã tạo
       if (context.user) {
         await this.prismaService.user.delete({
           where: { user_id: context.user.user_id }
@@ -762,17 +761,17 @@ export class AuthService {
       throw new InternalServerErrorException('User chưa được tạo');
     }
 
-    const confirmToken = randomBytes(32).toString('hex');
-    const hashedConfirmToken = crypto.createHash('sha256').update(confirmToken).digest('hex');
+    const confirmOTP = randomBytes(32).toString('hex');
+    const hashedConfirmOTP = crypto.createHash('sha256').update(confirmOTP).digest('hex');
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 giờ
 
-    context.confirmToken = confirmToken;
-    context.hashedConfirmToken = hashedConfirmToken;
+    context.confirmOTP = confirmOTP;
+    context.hashedConfirmOTP = hashedConfirmOTP;
     context.expiresAt = expiresAt;
 
     const payload = {
-      passwordResetToken: hashedConfirmToken,
-      passwordResetTokenExpires: expiresAt
+      passwordResetOTP: hashedConfirmOTP,
+      passwordResetOTPExpires: expiresAt
     }
 
     await this.userService.save(payload, context.user.user_id)
@@ -781,14 +780,14 @@ export class AuthService {
   }
 
   private async sendEmailVerification(context: IRegisterContext): Promise<IRegisterContext> {
-    if (!context.user || !context.confirmToken) {
+    if (!context.user || !context.confirmOTP) {
       throw new InternalServerErrorException('Thiếu thông tin để gửi email xác thực');
     }
 
     try {
       await this.queueService.addJob<{email: string, token: string}>('send-verification-email', {
         email: context.user.email,
-        token: context.confirmToken
+        token: context.confirmOTP
       }, undefined);
 
       context.emailVerificationSent = true;
@@ -804,8 +803,8 @@ export class AuthService {
   private async getRegisterResponse(context: IRegisterContext): Promise<{message: string}> {
     // Xóa các thông tin nhạy cảm khỏi context
     if (context.hashedPassword) delete context.hashedPassword;
-    if (context.hashedConfirmToken) delete context.hashedConfirmToken;
-    if (context.confirmToken) delete context.confirmToken;
+    if (context.hashedConfirmOTP) delete context.hashedConfirmOTP;
+    if (context.confirmOTP) delete context.confirmOTP;
 
     const message = context.emailVerificationSent 
       ? `Đăng ký thành công! Chúng tôi đã gửi email xác thực đến ${context.user?.email}. Vui lòng kiểm tra email và làm theo hướng dẫn để kích hoạt tài khoản.`

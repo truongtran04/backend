@@ -36,7 +36,7 @@ export class AppointmentController extends BaseController<Appointment, 'appointm
 
     @GuardType(GUARD)
     @UseGuards(JwtAuthGuard, ActiveUserGuard, RolesGuard)
-    @Roles('patient')
+    @Roles('patient', 'admin')
     @Post()
     @HttpCode(HttpStatus.CREATED)
     async create(

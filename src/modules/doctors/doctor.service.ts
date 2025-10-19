@@ -9,6 +9,7 @@ import { UpdateDoctorDTO, UpdatePatchDoctorDTO } from "./dto/update-doctor.dto";
 import { UserService } from "../users/user.service";
 import { SpecialtyService } from "../specialties/specialty.service";
 import { SpecificationBuilder } from "src/classes/specification-builder.class";
+import { SupabaseService } from "../supabase/supabase.service";
 
 @Injectable()
 export class DoctorService extends BaseService<DoctorRepository, Doctor> {
@@ -19,6 +20,7 @@ export class DoctorService extends BaseService<DoctorRepository, Doctor> {
         protected readonly prismaService: PrismaService,
         private readonly userService: UserService,
         private readonly specialtyService: SpecialtyService,
+        private readonly supabaseService: SupabaseService,
         private readonly validateService: ValidateService
     ){
         super(
@@ -50,16 +52,27 @@ export class DoctorService extends BaseService<DoctorRepository, Doctor> {
 
     async createBasicDocTor(request: CreateDoctorDTO): Promise<Doctor>{
 
+        if (!request) {
+            throw new BadRequestException("Không có dữ liệu được gửi lên")
+        }
         const user = await this.userService.createUserWithDoctor(request)
-
         const specialtyId = await this.specialtyService.getSpecialtyId(request.specialty_name)
+
+        const folder: string = 'doctors'
+        const { buffer, mimeType } = await this.supabaseService.decodeBase64ToBuffer(request.avatar_url)
+        const ext = mimeType.split('/').pop() || 'jpg';
+        const fileName = `${await this.supabaseService.normalizeFileName(request.full_name)}.${ext}`;
+
+        const imageUrl = await this.supabaseService.uploadImage(folder, fileName, buffer, mimeType);
+
 
         const { email, specialty_name, ...dataWithoutEmail } = request;
 
         const data: Doctor = await this.save({
             ...dataWithoutEmail,
             user_id: user.user_id,
-            specialty_id: specialtyId
+            specialty_id: specialtyId,
+            avatar_url: imageUrl
         })
 
         return data
