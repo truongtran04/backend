@@ -19,6 +19,7 @@ import { DoctorModule } from './modules/doctors/doctor.module';
 import { ScheduleModule } from './modules/schedules/schedule.module';
 import { AppointmentModule } from './modules/appointments/appointment.module';
 import { SupabaseModule } from './modules/supabase/supabase.module';
+import { ChatModule } from './modules/chat/chat.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { SupabaseModule } from './modules/supabase/supabase.module';
     ScheduleModule,
     AppointmentModule,
     SupabaseModule,
+    ChatModule,
     ConfigModule.forRoot({
       isGlobal: true,
     }),
