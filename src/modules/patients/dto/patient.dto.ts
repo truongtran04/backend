@@ -45,7 +45,7 @@ export class PatientDTO {
 
   @Expose({ name: 'created_at' })
   @Transform(ToLocalISOString())
-  createAt: Date
+  createdAt: Date
 
   @Expose({ name: 'updated_at' })
   @Transform(ToLocalISOString())

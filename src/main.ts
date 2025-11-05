@@ -4,11 +4,16 @@ import { GlobalExceptionFilter } from './exceptions/global-exception.filter';
 import cookieParser from 'cookie-parser';
 import { MinimalLogger } from './common/logger/minimal-logger';
 import { useContainer } from 'class-validator';
+import * as bodyParser from 'body-parser';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
-    logger: new MinimalLogger()
+    logger: new MinimalLogger(),
+    bodyParser: false
   });
+
+  app.use(bodyParser.json({ limit: '100mb' }));
+  app.use(bodyParser.urlencoded({ limit: '100mb', extended: true }));
 
   // const app = await NestFactory.create(AppModule);
   

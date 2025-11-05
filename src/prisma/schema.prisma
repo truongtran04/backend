@@ -94,14 +94,16 @@ model Doctor {
   doctor_id        String           @id @default(uuid())
   user_id          String           @unique
   specialty_id     String
-  full_name        String
-  title            String?
-  introduction     String?
-  avatar_url       String?
-  specializations  String?
-  work_experience  String?
-  achievements     String?
-  experience_years Int?
+  full_name            String                                             // Họ và tên đầy đủ của bác sĩ
+  title                String?                                            // Học vị hoặc chức danh (VD: ThS.BS, PGS.TS, ...)
+  experience_years     Int?                                               // Số năm kinh nghiệm hành nghề
+  specializations      String?                                            // Các lĩnh vực chuyên môn (VD: Nội tổng quát, Tim mạch)
+  position             String?                                            // Vị trí hoặc chức vụ (VD: Trưởng khoa, Bác sĩ điều trị)
+  workplace            String?                                            // Nơi làm việc chính (VD: Bệnh viện Bạch Mai)
+  clinic_address       String?                                            // Địa chỉ phòng khám hoặc nơi tiếp bệnh
+  introduction         String?                                            // Giới thiệu ngắn gọn về bác sĩ
+  achievements         String?                                            // Thành tích, công trình nghiên cứu, giải thưởng
+  avatar_url           String?                                            // Đường dẫn ảnh đại diện của bác sĩ
   is_available     Boolean          @default(true)
   created_at       DateTime         @default(now())
   updated_at       DateTime         @updatedAt

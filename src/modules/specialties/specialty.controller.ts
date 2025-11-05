@@ -117,9 +117,6 @@ export class SpecialtyController extends BaseController<Specialty, 'specialty_id
         )
     }
 
-    @GuardType(GUARD)
-    @UseGuards(JwtAuthGuard, ActiveUserGuard, RolesGuard)
-    @Roles('admin')
     @Get()
     @HttpCode(HttpStatus.OK)
     async paginate(

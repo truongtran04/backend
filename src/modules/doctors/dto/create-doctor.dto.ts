@@ -1,3 +1,4 @@
+import { OmitType } from "@nestjs/mapped-types";
 import { IsNotEmpty, IsString, IsEmail, IsOptional, IsNumber, IsPositive, IsBoolean } from "class-validator";
 
 export class CreateDoctorDTO {
@@ -16,27 +17,41 @@ export class CreateDoctorDTO {
     full_name: string;
 
     @IsString({ message: 'Chức danh phải là chuỗi' })
+    @IsNotEmpty({message: 'Chức danh không được để trống'})
     title: string;
-
-    @IsString({ message: 'Giới thiệu phải là chuỗi' })
-    introduction: string;
-
-    @IsString({ message: 'Ảnh đại diện phải là chuỗi (URL)' })
-    avatar_url: string;
-
-    @IsString({ message: 'Chuyên môn phải là chuỗi' })
-    specializations: string;
-
-    @IsString({ message: 'Kinh nghiệm làm việc phải là chuỗi' })
-    work_experience: string;
-
-    @IsString({ message: 'Thành tựu phải là chuỗi' })
-    achievements: string;
 
     @IsNumber({}, { message: 'Số năm kinh nghiệm phải là số' })
     @IsPositive({ message: 'Số năm kinh nghiệm phải lớn hơn 0' })
+    @IsNotEmpty({message: 'Số năm kinh nghiệm không được để trống'})
     experience_years: number;
+
+    @IsOptional()
+    specializations: string;
+
+    @IsOptional()
+    position: string;
+
+    @IsOptional()
+    workplace: string;
+
+    @IsOptional()
+    clinic_address: string;
+
+    @IsOptional()
+    introduction: string;
+
+    @IsOptional()   
+    achievements: string;
+
+    @IsString({ message: 'Ảnh đại diện phải là chuỗi (URL)' })
+    @IsNotEmpty({message: 'Ảnh đại diện không được để trống'})
+    avatar_url: string;
 
     @IsBoolean({ message: 'Trạng thái phải là true/false' })
     is_available: boolean;
 }
+
+export class CreateDoctorWithoutEmailDTO extends OmitType(CreateDoctorDTO, [
+  'email',
+  'is_available',
+] as const) {}

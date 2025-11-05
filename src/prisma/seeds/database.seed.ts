@@ -8,8 +8,8 @@ async function main() {
 
     const user = await prisma.user.create({
         data: {
-            email: 'trtr2k4@gmail.com',
-            password_hash: await bcrypt.hash('password', saltOrRounds),
+            email: 'admin@gmail.com',
+            password_hash: await bcrypt.hash('12345678', saltOrRounds),
             role: "admin"
         }
     })

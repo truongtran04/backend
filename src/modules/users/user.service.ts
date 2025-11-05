@@ -13,7 +13,7 @@ import { SpecificationBuilder } from "src/classes/specification-builder.class";
 
 @Injectable()
 export class UserService extends BaseService<UserRepository, User> {
-    private readonly userLogger = new Logger(UserService.name);
+  private readonly userLogger = new Logger(UserService.name);
 
   constructor(
     private readonly userRepository: UserRepository,
@@ -21,7 +21,7 @@ export class UserService extends BaseService<UserRepository, User> {
     private readonly validateService: ValidateService,
     private readonly patientService: PatientService,
 
-  ){
+  ) {
     super(
       userRepository,
       prismaService,
@@ -39,29 +39,29 @@ export class UserService extends BaseService<UserRepository, User> {
     )
   }
 
-  protected async beforeSave(id?: string, payload?: CreateUserDTO | UpdateUserDTO): Promise<this>{
-    if(!payload){
+  protected async beforeSave(id?: string, payload?: CreateUserDTO | UpdateUserDTO): Promise<this> {
+    if (!payload) {
       throw new BadRequestException('Dữ liệu không hợp lệ')
     }
     await this.validateService.model('user')
       .context({ primaryKey: 'user_id', id })
       .unique('email', payload.email, 'Email đã tồn tại')
       .validate()
-  
+
     return Promise.resolve(this)
   }
 
-  async findByEmail(email: string): Promise<User | null>{
+  async findByEmail(email: string): Promise<User | null> {
     const model = await this.userRepository.findByField('email', email)
     return model
   }
 
-  async findResetToken(token: string ): Promise<User | null>{
+  async findResetToken(token: string): Promise<User | null> {
     const model = await this.userRepository.isValidResetToken(token)
     return model
   }
 
-  async findUserByVerificationToken(token: string): Promise<User | null>{
+  async findUserByVerificationToken(token: string): Promise<User | null> {
     const model = await this.userRepository.isValidActive(token)
     return model
   }
@@ -86,20 +86,17 @@ export class UserService extends BaseService<UserRepository, User> {
     return userData
   }
 
-  async createUserWithDoctor(request: CreateDoctorDTO): Promise<User> {
-    const { email } = request
-
+  async createUserWithDoctor(email: string): Promise<User> {
+    
     const hashedPassword = await this.hashPassword("12345678")
 
     const userData = await this.save({
       email: email,
       password_hash: hashedPassword,
       role: 'doctor',
-      is_active: false
+      is_active: true
     })
 
     return userData
   }
-
-  
 }

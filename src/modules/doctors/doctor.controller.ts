@@ -14,12 +14,13 @@ import { DataTransformer } from 'src/common/bases/data.transform';
 import { TResult } from 'src/common/bases/base.service';
 import { DoctorService } from './doctor.service';
 import { DoctorDTO } from './dto/doctor.dto';
-import { CreateDoctorDTO } from './dto/create-doctor.dto';
+import { CreateDoctorDTO, CreateDoctorWithoutEmailDTO } from './dto/create-doctor.dto';
 import { UpdateDoctorDTO, UpdatePatchDoctorDTO } from './dto/update-doctor.dto';
 import { ActiveUserGuard } from 'src/common/guards/active-user.guard';
 import { RELATIONS } from 'src/common/constants/relations.constant';
 import { TModelOrPaginate } from 'src/common/bases/base.interface';
 import { IPaginateResult } from 'src/classes/query-builder.class';
+import { QueueService } from '../queue/queue.service';
 
 const GUARD = common.admin
 
@@ -29,13 +30,14 @@ export class DoctorController extends BaseController<Doctor, 'doctor_id', Doctor
     
     constructor(
         private readonly doctorService: DoctorService,
+        private readonly queueService: QueueService,
         private readonly transformer: DataTransformer<Doctor, DoctorDTO>
     ) {
         super(doctorService, 'doctor_id');
     }
 
     @Post()
-    @HttpCode(HttpStatus.OK)
+    @HttpCode(HttpStatus.CREATED)
     async create(
         @Body(new ValidationPipe()) createRequest: CreateDoctorDTO,
     ) : Promise<TApiReponse<DoctorDTO>> {
@@ -47,6 +49,16 @@ export class DoctorController extends BaseController<Doctor, 'doctor_id', Doctor
             'Success',
             HttpStatus.OK
         )
+    }
+
+    @Post('/many-doctors')
+    @HttpCode(HttpStatus.ACCEPTED)
+    async createManyDoctors(
+        @Body(new ValidationPipe()) createRequest: CreateDoctorWithoutEmailDTO[],
+    ) : Promise<TApiReponse<string>> {
+
+        await this.queueService.addDoctors('create-many-doctors', { request: createRequest });
+        return ApiResponse.message('Success', HttpStatus.ACCEPTED)
     }
 
     @GuardType(GUARD)
@@ -104,39 +116,32 @@ export class DoctorController extends BaseController<Doctor, 'doctor_id', Doctor
         )
     }
 
-    @GuardType(GUARD)
-    @UseGuards(JwtAuthGuard, ActiveUserGuard, RolesGuard)
-    @Roles('admin', 'doctor', 'patient')
     @Get(':id')
     @HttpCode(HttpStatus.OK)
     async show(
         @Param('id') id: string,
         @Req() req
     ): Promise<TApiReponse<DoctorDTO>>{
-        const role = req.user.role
         const data: Doctor = await this.doctorService.show(id, RELATIONS.DOCTOR)
         return ApiResponse.suscess(
-            this.transformer.transformSingle(data, DoctorDTO, [role]), 
+            this.transformer.transformSingle(data, DoctorDTO), 
             'Success', 
             HttpStatus.OK
         )
     }
 
-    @GuardType(GUARD)
-    @UseGuards(JwtAuthGuard, ActiveUserGuard, RolesGuard)
-    @Roles('admin', 'patient', 'doctor')
+
     @Get()
     @HttpCode(HttpStatus.OK)
     async paginate(
         @Query() query: Record<string, any>,
         @Req() req
     ): Promise<TApiReponse<TModelOrPaginate<DoctorDTO>>> {
-        const role = req.user.role
         const data: Doctor[] | IPaginateResult<Doctor> = await this.doctorService.paginate(query, RELATIONS.DOCTOR)
         
         const dataTransform: TModelOrPaginate<DoctorDTO> = Array.isArray(data)
-                    ? this.transformer.transformArray(data, DoctorDTO , [role])
-                    : this.transformer.transformPaginated(data, DoctorDTO, [role])
+                    ? this.transformer.transformArray(data, DoctorDTO)
+                    : this.transformer.transformPaginated(data, DoctorDTO)
 
         return ApiResponse.suscess(
             dataTransform,

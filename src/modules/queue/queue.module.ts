@@ -1,7 +1,8 @@
-import { Module } from "@nestjs/common";
+import { forwardRef, Module } from "@nestjs/common";
 import { BullModule } from "@nestjs/bull";
 import { QueueService } from "./queue.service";
 import { MailModule } from "../mail/mail.module";
+import { DoctorModule } from "../doctors/doctor.module";
 
 @Module({
     imports: [
@@ -16,8 +17,20 @@ import { MailModule } from "../mail/mail.module";
                 removeOnComplete: true,
                 removeOnFail: false
             }
+        }, {
+            name: 'doctor-import',
+            defaultJobOptions: {
+                attempts: 3,
+                backoff: {
+                    type: 'exponential', //Tăng thời gian chờ theo cấp số nhân,
+                    delay: 5000, // thời gian chờ ban đầu là 5s
+                },
+                removeOnComplete: true,
+                removeOnFail: false
+            }
         }),
-        MailModule
+        MailModule,
+        forwardRef(() => DoctorModule)
     ],
     providers: [QueueService],
     exports: [QueueService]

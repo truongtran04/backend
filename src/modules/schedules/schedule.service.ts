@@ -10,11 +10,13 @@ import { UpdateScheduleDTO } from './dto/update-schedule.dto';
 import { IAuthUser } from '../auth/auth.interface';
 import { UserService } from '../users/user.service';
 import { DoctorService } from '../doctors/doctor.service';
-import { ScheduleRequest, ScheduleUTC  } from './schedule.interface';
+import { ScheduleRequest, ScheduleUTC } from './schedule.interface';
+import { RELATIONS } from 'src/common/constants/relations.constant';
+import { SpecificationBuilder } from 'src/classes/specification-builder.class';
 
 @Injectable()
 export class ScheduleService extends BaseService<ScheduleRepository, DoctorSchedule> {
-    
+
     private readonly serviceLogger = new Logger(ScheduleService.name)
 
     constructor(
@@ -23,32 +25,41 @@ export class ScheduleService extends BaseService<ScheduleRepository, DoctorSched
         private readonly validateService: ValidateService,
         private readonly userService: UserService,
         private readonly doctorService: DoctorService,
-    ){
+    ) {
         super(
-            scheduleRepository, 
-            prismaService
+            scheduleRepository,
+            prismaService,
+            new SpecificationBuilder({
+                defaultSort: 'created_at, desc',
+                searchFields: ['schedule_date'],
+                simpleFilter: ['schedule_date'],
+                dateFilter: ['created_at', 'updated_at'],
+                fieldTypes: {
+                    schedule_date: 'string',
+                }
+            })
         )
     }
 
-    protected async beforeSave(id?: string, payload?: CreateScheduleDTO | UpdateScheduleDTO): Promise<this>{
-        if(!payload){
+    protected async beforeSave(id?: string, payload?: CreateScheduleDTO | UpdateScheduleDTO): Promise<this> {
+        if (!payload) {
             throw new BadRequestException('Dữ liệu không hợp lệ')
         }
         await this.validateService.model('doctorSchedule')
-                .context({ primaryKey: 'schedule_id', id })
-                .validate()
+            .context({ primaryKey: 'schedule_id', id })
+            .validate()
 
         return Promise.resolve(this)
     }
 
-    private async getDoctorId(payload: IAuthUser): Promise<string>{
+    async getDoctorId(payload: IAuthUser): Promise<string> {
 
         const user = await this.userService.findById(payload.userId)
         if (!user) {
             throw new BadRequestException('Không tìm thấy người dùng với id này');
         }
 
-        const doctor = await this.doctorService.findByField('user_id',user.user_id)
+        const doctor = await this.doctorService.findByField('user_id', user.user_id)
         if (!doctor) {
             throw new BadRequestException('Không tìm thấy bác sĩ tương ứng với user này');
         }
@@ -132,7 +143,7 @@ export class ScheduleService extends BaseService<ScheduleRepository, DoctorSched
     private validateMinimumAdvanceBooking(startTime: Date, now: Date): void {
         const MIN_BEFORE_START_MINUTES = 15;
         const minBeforeStart = new Date(startTime.getTime() - MIN_BEFORE_START_MINUTES * 60 * 1000);
-        
+
         if (now > minBeforeStart) {
             throw new BadRequestException(
                 `Bạn phải đặt lịch trước ít nhất ${MIN_BEFORE_START_MINUTES} phút so với giờ bắt đầu`
@@ -143,7 +154,7 @@ export class ScheduleService extends BaseService<ScheduleRepository, DoctorSched
     private validateDuration(startTime: Date, endTime: Date): void {
         const REQUIRED_DURATION_MINUTES = 30;
         const durationMinutes = (endTime.getTime() - startTime.getTime()) / (1000 * 60);
-        
+
         if (durationMinutes !== REQUIRED_DURATION_MINUTES) {
             throw new BadRequestException(
                 'Khoảng thời gian giữa giờ bắt đầu và giờ kết thúc phải đúng 30 phút'
@@ -178,25 +189,49 @@ export class ScheduleService extends BaseService<ScheduleRepository, DoctorSched
     private getDayBoundaries(date: Date): { startOfDay: Date; endOfDay: Date } {
         const startOfDay = new Date(date);
         startOfDay.setHours(0, 0, 0, 0);
-        
+
         const endOfDay = new Date(date);
         endOfDay.setHours(23, 59, 59, 999);
-        
+
         return { startOfDay, endOfDay };
     }
 
 
-    async createSchedule(payload: IAuthUser, request: CreateScheduleDTO): Promise<DoctorSchedule>{
+    async createSchedule(payload: IAuthUser, request: CreateScheduleDTO): Promise<DoctorSchedule> {
 
-        const doctor_id = await this.getDoctorId(payload)
+        const doctorId = await this.getDoctorId(payload)
 
-        const checkData = await this.checkDateTime(doctor_id, request)
+        const checkData = await this.checkDateTime(doctorId, request)
 
         const data: DoctorSchedule = await this.save({
-            doctor_id: doctor_id,
+            doctor_id: doctorId,
             ...checkData
         })
 
-        return data
+        const show = await this.show(data.schedule_id, RELATIONS.SCHEDULE)
+
+        return show
     }
+
+    async createManySchedules(payload: IAuthUser, request: CreateScheduleDTO[]): Promise<DoctorSchedule[]> { 
+        
+        const doctorId = await this.getDoctorId(payload)
+        const results: DoctorSchedule[] = []
+
+        for (const schedule of request) { 
+
+            const checkData = await this.checkDateTime(doctorId, schedule)
+            
+            const created = await this.save({
+                doctor_id: doctorId, 
+                ...checkData 
+            })
+
+            const fullData = await this.show(created.schedule_id, RELATIONS.SCHEDULE)
+
+            results.push(fullData)
+        } 
+        return results
+    }
+
 }

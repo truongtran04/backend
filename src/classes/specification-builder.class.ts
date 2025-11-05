@@ -13,7 +13,7 @@ export interface ISpecifications {
     sort: string,
     keyword: TKeyword,
     filter: {
-        simple: TFilterItem ,
+        simple: TFilterItem,
         date: TFilterItem,
     }
 }
@@ -34,35 +34,35 @@ export class SpecificationBuilder {
     protected fieldTypes: Record<string, TCastField>
 
     constructor(
-    options?: {
-      defaultSort?: string,          
-      searchFields?: string[],       
-      simpleFilter?: string[],       
-      dateFilter?: string[],         
-      fieldTypes?: Record<string, TCastField>
+        options?: {
+            defaultSort?: string,
+            searchFields?: string[],
+            simpleFilter?: string[],
+            dateFilter?: string[],
+            fieldTypes?: Record<string, TCastField>
+        }
+    ) {
+        this.sort = options?.defaultSort ?? 'id, desc'
+        this.searchFields = options?.searchFields ?? ['name']
+        this.simpleFilter = options?.simpleFilter ?? ['id']
+        this.dateFilter = options?.dateFilter ?? ['created_at', 'updated_at']
+        this.fieldTypes = options?.fieldTypes ?? {}
     }
-  ) {
-    this.sort = options?.defaultSort ?? 'id, desc'
-    this.searchFields = options?.searchFields ?? ['name']
-    this.simpleFilter = options?.simpleFilter ?? ['id']
-    this.dateFilter = options?.dateFilter ?? ['created_at', 'updated_at']
-    this.fieldTypes = options?.fieldTypes ?? {}
-  }
 
 
-    buildFilter (query: Record<string, unknown>, filters: string[]): TFilterItem {
+    buildFilter(query: Record<string, unknown>, filters: string[]): TFilterItem {
         const conditions: TFilterItem = {}
         filters.forEach(filter => {
-            if(query[filter] && query[filter] !== undefined ){
+            if (query[filter] && query[filter] !== undefined) {
                 const value = query[filter] as string
                 const fieldType = this.fieldTypes[filter]
-                if(fieldType){
+                if (fieldType) {
                     switch (fieldType) {
                         case 'number': {
                             const numValue = parseInt(value, 10)
                             conditions[filter] = numValue
                             break;
-                        } 
+                        }
                         case 'bigint': {
                             try {
                                 conditions[filter] = BigInt(value)
@@ -80,15 +80,15 @@ export class SpecificationBuilder {
                             conditions[filter] = value
                             break;
                     }
-                }else{
+                } else {
                     conditions[filter] = value
                 }
             }
         })
-        return conditions 
+        return conditions
     }
 
-    
+
     buildSpecifications(query: Record<string, any>): ISpecifications {
         return {
             type: query.type === 'all',
@@ -96,12 +96,12 @@ export class SpecificationBuilder {
             page: query.page ? parseInt(query.page, 10) : 1,
             sort: query.sort ?? this.sort,
             keyword: {
-            q: query.keyword ?? null,
-            fields: this.searchFields,
+                q: query.keyword ?? null,
+                fields: this.searchFields,
             },
             filter: {
-            simple: this.buildFilter(query, this.simpleFilter),
-            date: this.buildFilter(query, this.dateFilter),
+                simple: this.buildFilter(query, this.simpleFilter),
+                date: this.buildFilter(query, this.dateFilter),
             },
         };
     }

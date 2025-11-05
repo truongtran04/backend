@@ -9,11 +9,11 @@ export class DoctorDTO {
     @Expose()
     user_id: string;
     
-    @Expose({ groups: ['doctor', 'admin', 'patient'] })
+    @Expose()
     @Transform(({ obj }) => obj.User.email ?? null)
     email: string;
 
-    @Expose({ groups: ['doctor', 'admin', 'patient'] })
+    @Expose()
     @Transform(({ obj }) => obj.Specialty.name ?? null)
     specialty_name: string;
 
@@ -21,32 +21,38 @@ export class DoctorDTO {
     full_name: string;
 
     @Expose()
-    title?: string;
-
-    @Expose()
-    introduction: string;
-
-    @Expose()
-    avatar_url: string;
-
-    @Expose()
-    specializations: string;
-
-    @Expose()
-    work_experience: string;
-
-    @Expose()
-    achievements: string;
+    title: string;
 
     @Expose()
     experience_years: number;
 
     @Expose()
+    specializations: string;
+
+    @Expose()
+    position: string;
+
+    @Expose()
+    workplace: string;
+
+    @Expose()
+    clinic_address: string;
+
+    @Expose()
+    introduction: string;
+
+    @Expose()
+    achievements: string;
+
+    @Expose()
+    avatar_url: string;
+    
+    @Expose()
     is_available: boolean;
 
     @Expose({ name: 'created_at' })
     @Transform(ToLocalISOString())
-    createAt: Date
+    createdAt: Date
 
     @Expose({ name: 'updated_at' })
     @Transform(ToLocalISOString())

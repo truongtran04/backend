@@ -1,3 +1,4 @@
+import { PartialType } from "@nestjs/mapped-types";
 import { IsNotEmpty, IsString, IsOptional, IsNumber, IsPositive, IsBoolean } from "class-validator";
 
 export class UpdateDoctorDTO {
@@ -10,70 +11,37 @@ export class UpdateDoctorDTO {
     @IsNotEmpty({ message: 'Họ tên không được để trống' })
     full_name: string;
 
-    
     @IsString({ message: 'Chức danh phải là chuỗi' })
-    title?: string;
-
-    @IsString({ message: 'Giới thiệu phải là chuỗi' })
-    introduction?: string;
-
-    @IsString({ message: 'Ảnh đại diện phải là chuỗi (URL)' })
-    avatar_url?: string;
-
-    @IsString({ message: 'Chuyên môn phải là chuỗi' })
-    specializations?: string;
-
-    @IsString({ message: 'Kinh nghiệm làm việc phải là chuỗi' })
-    work_experience?: string;
-
-    @IsString({ message: 'Thành tựu phải là chuỗi' })
-    achievements?: string;
+    @IsNotEmpty({message: 'Chức danh không được để trống'})
+    title: string;
 
     @IsNumber({}, { message: 'Số năm kinh nghiệm phải là số' })
     @IsPositive({ message: 'Số năm kinh nghiệm phải lớn hơn 0' })
-    experience_years?: number;
+    @IsNotEmpty({message: 'Số năm kinh nghiệm không được để trống'})
+    experience_years: number;
 
-}
+    specializations: string;
 
+    @IsString({ message: 'Vị trí hoặc chức vụ phải là chuỗi' })
+    @IsNotEmpty({message: 'Vị trí hoặc chức vụ không được để trống'})
+    position: string;
 
-export class UpdatePatchDoctorDTO {
+    @IsString({ message: 'Nơi làm việc chính phải là chuỗi' })
+    @IsNotEmpty({message: 'Nơi làm việc chính không được để trống'})
+    workplace: string;
 
-    @IsOptional()
-    @IsString({ message: 'Specialty ID phải là chuỗi' })
-    @IsNotEmpty({ message: 'Specialty ID không được để trống' })
-    specialty_name: string;
+    @IsString({ message: 'Địa chỉ phòng khám hoặc nơi tiếp bệnh phải là chuỗi' })
+    @IsNotEmpty({message: 'Địa chỉ phòng khám hoặc nơi tiếp bệnh không được để trống'})
+    clinic_address: string;
 
-    @IsOptional()
-    @IsString({ message: 'Họ tên phải là chuỗi' })
-    @IsNotEmpty({ message: 'Họ tên không được để trống' })
-    full_name: string;
+    introduction: string;
 
-    @IsOptional()
-    @IsString({ message: 'Chức danh phải là chuỗi' })
-    title?: string;
+    achievements: string;
 
-    @IsOptional()
-    @IsString({ message: 'Giới thiệu phải là chuỗi' })
-    introduction?: string;
-
-    @IsOptional()
     @IsString({ message: 'Ảnh đại diện phải là chuỗi (URL)' })
-    avatar_url?: string;
+    @IsNotEmpty({message: 'Ảnh đại diện không được để trống'})
+    avatar_url: string;
 
-    @IsOptional()
-    @IsString({ message: 'Chuyên môn phải là chuỗi' })
-    specializations?: string;
-
-    @IsOptional()
-    @IsString({ message: 'Kinh nghiệm làm việc phải là chuỗi' })
-    work_experience?: string;
-
-    @IsOptional()
-    @IsString({ message: 'Thành tựu phải là chuỗi' })
-    achievements?: string;
-
-    @IsOptional()
-    @IsNumber({}, { message: 'Số năm kinh nghiệm phải là số' })
-    @IsPositive({ message: 'Số năm kinh nghiệm phải lớn hơn 0' })
-    experience_years?: number;
 }
+
+export class UpdatePatchDoctorDTO extends PartialType(UpdateDoctorDTO) {}

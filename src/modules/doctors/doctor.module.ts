@@ -6,18 +6,22 @@ import { DoctorRepository } from './doctor.repository';
 import { DoctorService } from './doctor.service';
 import { UserModule } from '../users/user.module';
 import { SpecialtyModule } from '../specialties/specialty.module';
+import { QueueModule } from '../queue/queue.module';
+import { DoctorProcessor } from './doctor.process';
 
 @Module({
   imports: [
     ValidateModule,
     UserModule,
-    SpecialtyModule
+    SpecialtyModule,
+    forwardRef(() => QueueModule)
   ],
   controllers: [DoctorController],
   providers: [
     DoctorRepository,
     DoctorService,
-    DataTransformer
+    DataTransformer,
+    DoctorProcessor
   ],
   exports: [
     DoctorRepository,
