@@ -34,6 +34,8 @@
     "@nestjs/mapped-types": "^2.1.0",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/platform-socket.io": "^11.1.8",
+    "@nestjs/websockets": "^11.1.8",
     "@prisma/client": "^6.15.0",
     "@supabase/supabase-js": "^2.75.0",
     "@types/cookie-parser": "^1.4.9",

@@ -47,6 +47,8 @@ model User {
   
   Patient Patient?
   Doctor  Doctor?
+  ChatParticipant ChatParticipant[]
+  ChatMessage     ChatMessage[]
 
   @@map("users")
 }
@@ -161,4 +163,35 @@ model Appointment {
   @@index([status])
 
   @@map("appointments")
+}
+
+model ChatRoom {
+  id            String            @id @default(cuid())
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  participants  ChatParticipant[]
+  messages      ChatMessage[]
+}
+
+model ChatParticipant {
+  id          String    @id @default(cuid())
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  user        User      @relation(fields: [userId], references: [user_id])
+  userId      String
+  chatRoom    ChatRoom  @relation(fields: [chatRoomId], references: [id])
+  chatRoomId  String
+
+  @@unique([userId, chatRoomId])
+}
+
+model ChatMessage {
+  id              String    @id @default(cuid())
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  content         String
+  sender          User      @relation(fields: [senderId], references: [user_id])
+  senderId        String
+  chatRoom        ChatRoom  @relation(fields: [chatRoomId], references: [id])
+  chatRoomId      String
 }
