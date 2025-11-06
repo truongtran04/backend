@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { ChatMessage } from '@prisma/client';
+import { ChatMessage, ChatRoom } from '@prisma/client';
 
 @Injectable()
 export class ChatService {
@@ -12,32 +12,39 @@ export class ChatService {
   private async findOrCreateChatRoom(
     userId1: string,
     userId2: string,
-  ): Promise<string> {
+  ): Promise<ChatRoom> {
     // Tìm phòng chat có chính xác 2 người tham gia này
     const chatRoom = await this.prisma.chatRoom.findFirst({
       where: {
         AND: [
-          { participants: { some: { id: userId1 } } },
-          { participants: { some: { id: userId2 } } },
-          { participants: { every: { id: { in: [userId1, userId2] } } } },
+          { participants: { some: { user_id: userId1 } } },
+          { participants: { some: { user_id: userId2 } } },
         ],
+        // Đảm bảo phòng chat chỉ có 2 người này
+        participants: {
+          every: { user_id: { in: [userId1, userId2] } },
+        },
       },
     });
 
     if (chatRoom) {
-      return chatRoom.id;
+      return chatRoom;
     }
 
     // Nếu không có, tạo phòng mới
     const newChatRoom = await this.prisma.chatRoom.create({
       data: {
-        participants: { 
-          create: [{ userId: userId1 }, { userId: userId2 }],
-        }, 
+        participants: {
+          create: [{ user_id: userId1 }, { user_id: userId2 }],
+        },
       },
     });
 
-    return newChatRoom.id;
+    return newChatRoom;
+  }
+
+  async createConversation(userId1: string, userId2: string): Promise<ChatRoom> {
+    return this.findOrCreateChatRoom(userId1, userId2);
   }
 
   async createMessage(
@@ -45,13 +52,13 @@ export class ChatService {
     recipientId: string,
     content: string,
   ): Promise<ChatMessage> {
-    const chatRoomId = await this.findOrCreateChatRoom(senderId, recipientId);
+    const chatRoom = await this.findOrCreateChatRoom(senderId, recipientId);
 
     return this.prisma.chatMessage.create({
       data: {
         content: content,
         senderId: senderId,
-        chatRoomId: chatRoomId,
+        chatRoomId: chatRoom.id,
       },
     });
   }
@@ -62,7 +69,7 @@ export class ChatService {
       where: {
         participants: {
           some: {
-            id: userId,
+            user_id: userId,
           },
         },
       },
@@ -77,7 +84,7 @@ export class ChatService {
         // Lấy thông tin của những người tham gia khác (không phải user hiện tại)
         participants: {
           where: {
-            id: {
+            user_id: {
               not: userId,
             },
           },
@@ -108,6 +115,61 @@ export class ChatService {
       where: { chatRoomId: chatRoomId },
       orderBy: {
         createdAt: 'asc',
+      },
+    });
+  }
+
+  async searchUsers(name: string, role: string, currentUserId: string) {
+    if (role === 'doctor') {
+      return this.prisma.doctor.findMany({
+        where: {
+          full_name: {
+            contains: name,
+            mode: 'insensitive',
+          },
+          NOT: {
+            user_id: currentUserId,
+          },
+        },
+        include: {
+          User: true,
+          Specialty: true,
+        },
+      });
+    }
+
+    const whereCondition: any = {
+      NOT: {
+        id: currentUserId,
+      },
+    };
+
+    if (name) {
+      whereCondition.OR = [
+        {
+          first_name: {
+            contains: name,
+            mode: 'insensitive',
+          },
+        },
+        {
+          last_name: {
+            contains: name,
+            mode: 'insensitive',
+          },
+        },
+      ];
+    }
+
+    if (role) {
+      whereCondition.role = role;
+    }
+
+    return this.prisma.user.findMany({
+      where: whereCondition,
+      include: {
+        Patient: true,
+        Doctor: true,
       },
     });
   }
