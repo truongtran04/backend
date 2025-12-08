@@ -1,51 +1,82 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards, Query } from '@nestjs/common';
-import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
+import { Controller, Post, Body, Get, Param, Query, Req, UseGuards } from '@nestjs/common';
 import { ChatService } from './chat.service';
-import type { Request } from 'express';
-import { ApiResponse } from 'src/common/bases/api-reponse';
-import { IAuthUser } from '../auth/auth.interface';
-import { CreateConversationDto } from './dto/create-conversation.dto';
+import { IsString } from 'class-validator';
+import { JwtAuthGuard, GuardType } from 'src/common/guards/jwt-auth.guard';
+import { common } from 'src/config/constant';
+import { ChatGateway } from './chat.gateway';
+
+// DTO để validate body của request
+class InitiateChatDto {
+    @IsString()
+    recipientId: string;
+}
+
+class SendMessageDto {
+    @IsString()
+    content: string;
+}
+
+interface AuthenticatedRequest extends Request {
+  user: {
+    userId: string;
+    role: string;
+    guard: string;
+  };
+}
 
 @Controller('v1/chat')
+@GuardType(common.admin)
 @UseGuards(JwtAuthGuard)
 export class ChatController {
-  constructor(private readonly chatService: ChatService) {}
+  constructor(
+    private readonly chatService: ChatService,
+    private readonly chatGateway: ChatGateway,
+    ) {}
 
-  @Post('conversations')
-  async createConversation(
-    @Req() req: Request & { user: IAuthUser },
-    @Body() createConversationDto: CreateConversationDto,
-  ): Promise<ApiResponse> {
-    const userId = req.user?.userId;
-    const { recipientId } = createConversationDto;
-    const conversation = await this.chatService.createConversation(userId, recipientId);
-    return ApiResponse.suscess(conversation, 'Tạo hoặc lấy hội thoại thành công');
+  // API để bắt đầu cuộc trò chuyện
+  @Post('initiate')
+  async initiateChat(
+    @Req() req: AuthenticatedRequest, 
+    @Body() body: InitiateChatDto
+    ): Promise<any> {
+    const initiatorId: string = req.user.userId; // Sử dụng req.user.userId
+    const recipientId: string = body.recipientId;
+    return await this.chatService.findOrCreateChatRoom(initiatorId, recipientId);
   }
 
-  @Get('conversations')
-  async getConversations(@Req() req: Request & { user: IAuthUser }): Promise<ApiResponse> {
-    const userId = req.user?.userId;
-    const conversations = await this.chatService.getConversations(userId);
-    return ApiResponse.suscess(conversations, 'Lấy danh sách hội thoại thành công');
+  // API để lấy tất cả phòng chat của user hiện tại
+  @Get('rooms')
+  async getUserChatRooms(@Req() req: AuthenticatedRequest): Promise<any[]> {
+    const userId = req.user.userId; // Sử dụng req.user.userId
+    return this.chatService.getUserChatRooms(userId);
   }
 
-  @Get('history/:chatRoomId')
-  async getMessageHistory(@Req() req: Request, 
-    @Param('chatRoomId') chatRoomId: string,
-  ): Promise<ApiResponse> { // req.user is already guaranteed by JwtAuthGuard
-    const userId = (req.user as IAuthUser).userId;
-    const history = await this.chatService.getMessageHistory(chatRoomId);
-    return ApiResponse.suscess(history, 'Lấy lịch sử tin nhắn thành công');
+  // API để lấy lịch sử tin nhắn của một phòng
+  @Get('rooms/:roomId/messages')
+  async getChatMessages(
+    @Req() req: AuthenticatedRequest,
+    @Param('roomId') roomId: string,
+    @Query('page') page: string = '1',
+    @Query('pageSize') pageSize: string = '20',
+  ): Promise<any[]> {
+    const userId = req.user.userId;
+    return this.chatService.getChatMessages(userId, roomId, parseInt(page), parseInt(pageSize));
   }
 
-  @Get('users/search')
-  async searchUsers(
-    @Req() req: Request & { user: IAuthUser },
-    @Query('name') name: string,
-    @Query('role') role: string,
-  ): Promise<ApiResponse> {
-    const currentUserId = req.user?.userId;
-    const users = await this.chatService.searchUsers(name, role, currentUserId);
-    return ApiResponse.suscess(users, 'Tìm kiếm người dùng thành công');
+  // API để gửi tin nhắn vào một phòng
+  @Post('rooms/:roomId/messages')
+  async sendMessage(
+    @Req() req: AuthenticatedRequest,
+    @Param('roomId') roomId: string,
+    @Body() body: SendMessageDto,
+  ): Promise<any> {
+    const userId = req.user.userId;
+    const { content } = body;
+    const message = await this.chatService.createMessage(userId, roomId, content);
+
+    // Phát tin nhắn qua WebSocket
+    this.chatGateway.server.to(roomId).emit('receiveMessage', message);
+
+    return message;
   }
 }

@@ -1,12 +1,12 @@
+// src/chat/chat.module.ts
 import { Module } from '@nestjs/common';
 import { ChatGateway } from './chat.gateway';
-import { JwtModule } from '@nestjs/jwt';
-import { ChatController } from './chat.controller';
 import { ChatService } from './chat.service';
+import { ChatController } from './chat.controller';
+import { PrismaService } from '../../prisma/prisma.service';
 
 @Module({
-  imports: [JwtModule.register({})],
+  providers: [ChatGateway, ChatService, PrismaService], // Thêm PrismaService vào providers
   controllers: [ChatController],
-  providers: [ChatGateway, ChatService],
 })
 export class ChatModule {}

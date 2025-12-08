@@ -2,7 +2,8 @@ import { CanActivate, ExecutionContext, Injectable, Logger } from '@nestjs/commo
 import { JwtService } from '@nestjs/jwt';
 import { Observable } from 'rxjs';
 import { Socket } from 'socket.io';
-import { IAuthUser } from 'src/modules/auth/auth.interface';
+import { jwtConstants } from 'src/modules/auth/auth.constant';
+import { IJwtPayload } from 'src/modules/auth/auth.interface';
 
 @Injectable()
 export class WsJwtGuard implements CanActivate {
@@ -22,9 +23,9 @@ export class WsJwtGuard implements CanActivate {
     }
 
     try {
-      const payload: IAuthUser = this.jwtService.verify(token, { secret: process.env.JWT_SECRET });
+      const payload: IJwtPayload = this.jwtService.verify(token, { secret: jwtConstants.secret });
       // Gắn thông tin user vào socket để sử dụng ở các bước sau
-      client['user'] = { userId: payload.userId, role: payload.role, guard: payload.guard };
+      client['user'] = { userId: payload.sub, role: payload.role, guard: payload.guard };
     } catch (e) {
       this.logger.error('WS connection rejected: Invalid token.', e.message);
       return false;

@@ -1,84 +1,62 @@
+// src/chat/chat.gateway.ts
 import {
-  WebSocketGateway,
-  OnGatewayConnection,
-  WebSocketServer,
   SubscribeMessage,
-  MessageBody,
-  ConnectedSocket,
+  WebSocketGateway,
+  OnGatewayInit,
+  OnGatewayConnection,
+  OnGatewayDisconnect,
+  WebSocketServer,
 } from '@nestjs/websockets';
-import { Server, Socket } from 'socket.io';
-import * as jwt from 'jsonwebtoken';
-import { jwtConstants } from 'src/modules/auth/auth.constant';
-import { ChatService } from './chat.service';
+import { Logger, UseGuards } from '@nestjs/common';
+import { Socket, Server } from 'socket.io';
+import { ChatService, ChatMessageWithSender } from './chat.service';
+import { WsJwtGuard } from 'src/common/guards/ws-jwt.guard';
 
 @WebSocketGateway({
   cors: {
-    origin: '*',
+    origin: process.env.FRONTEND_URL,
+    credentials: true,
   },
 })
-export class ChatGateway implements OnGatewayConnection {
-  @WebSocketServer()
-  server: Server;
+@UseGuards(WsJwtGuard)
+export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
+  @WebSocketServer() server: Server;
+  private logger: Logger = new Logger('ChatGateway');
 
   constructor(private readonly chatService: ChatService) {}
 
-  async handleConnection(client: Socket) {
-    try {
-      const token =
-        client.handshake.auth?.token ||
-        client.handshake.headers?.authorization?.split(' ')[1];
+  afterInit(server: Server) {
+    this.logger.log('WebSocket Gateway Initialized');
+  }
 
-      if (!token) {
-        client.disconnect();
-        return;
-      }
+  handleConnection(client: Socket, ...args: any[]) {
+    this.logger.log(`Client connected: ${client.id}`);
+  }
 
-      const decoded = jwt.verify(token, jwtConstants.secret) as {
-        sub: string;
-        role: string;
-        guard: string;
-      };
-
-      client.data.user = {
-        userId: decoded.sub,
-        role: decoded.role,
-        guard: decoded.guard,
-      };
-
-      client.join(decoded.sub); // Tham gia vào phòng riêng của mình
-
-      console.log('✅ Connected user:', client.data.user, ' and joined room: ', decoded.sub);
-    } catch (err) {
-      console.error('❌ Invalid token:', err.message);
-      client.disconnect();
-    }
+  handleDisconnect(client: Socket) {
+    this.logger.log(`Client disconnected: ${client.id}`);
   }
 
   @SubscribeMessage('joinRoom')
-  handleJoinRoom(
-    @MessageBody() room: string,
-    @ConnectedSocket() client: Socket,
-  ) {
-    client.join(room);
-    console.log(`User ${client.data.user.userId} joined room: ${room}`);
+  handleJoinRoom(client: Socket, roomId: string): void {
+    client.join(roomId);
+    client.emit('joinedRoom', roomId); // Gửi lại xác nhận đã join phòng
+    this.logger.log(`Client ${client.id} joined room ${roomId}`);
   }
 
-  @SubscribeMessage('message')
-  async handleMessage(
-    @MessageBody() payload: { recipientId: string; content: string },
-    @ConnectedSocket() client: Socket,
-  ) {
-    const senderId = client.data.user.userId;
-    const { recipientId, content } = payload;
+  @SubscribeMessage('sendMessage')
+  async handleMessage(client: Socket, payload: { chatRoomId: string; senderId: string; content: string }): Promise<void> {
+    try {
+      const user = client['user']; // Lấy thông tin user đã được guard gắn vào
+      const { chatRoomId, content } = payload;
+      // Sử dụng ID từ token đã xác thực, không tin tưởng ID từ client gửi lên
+      const message: ChatMessageWithSender = await this.chatService.createMessage(user.userId, chatRoomId, content);
 
-    const message = await this.chatService.createMessage(
-      senderId,
-      recipientId,
-      content,
-    );
-
-    this.server.to(recipientId).emit('message', message);
-
-    return message; // Gửi lại cho người gửi để xác nhận
+      // Gửi tin nhắn tới tất cả client trong phòng
+      this.server.to(chatRoomId).emit('receiveMessage', message);
+    } catch (error) {
+      this.logger.error('Failed to handle message', error);
+      client.emit('messageError', 'Could not send message.');
+    }
   }
 }

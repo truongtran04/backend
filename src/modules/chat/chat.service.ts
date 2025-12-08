@@ -1,176 +1,195 @@
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from 'src/prisma/prisma.service';
-import { ChatMessage, ChatRoom } from '@prisma/client';
+// src/chat/chat.service.ts
+import { ForbiddenException, Injectable } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
+import { ChatRoom, Prisma } from '@prisma/client';
 
+
+// -------------------------
+// 1️⃣ Định nghĩa kiểu trả về cho messages và rooms
+// -------------------------
+const chatMessageWithSender = Prisma.validator<Prisma.ChatMessageDefaultArgs>()({
+  include: {
+    sender: {
+      select: {
+        user_id: true,
+        role: true,
+        Doctor: { select: { full_name: true } },
+        Patient: { select: { full_name: true } },
+      },
+    },
+  },
+});
+
+const chatRoomWithDetails = Prisma.validator<Prisma.ChatRoomDefaultArgs>()({
+  include: {
+    participants: {
+      include: {
+        user: {
+          select: {
+            user_id: true,
+            email: true,
+            role: true,
+            Doctor: {
+              select: {
+                full_name: true,
+                avatar_url: true,
+              }
+            },
+            Patient: {
+              select: {
+                full_name: true,
+              }
+            },
+          },
+        },
+      },
+    },
+    messages: { orderBy: { createdAt: 'desc' }, take: 1 },
+  },
+});
+
+export type ChatMessageWithSender = Prisma.ChatMessageGetPayload<typeof chatMessageWithSender>;
+export type ChatRoomWithDetails = Prisma.ChatRoomGetPayload<typeof chatRoomWithDetails>;
+
+// -------------------------
+// 2️⃣ Service
+// -------------------------
 @Injectable()
 export class ChatService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  /**
-   * Tạo hoặc tìm một phòng chat 1-1 giữa hai người dùng.
-   */
-  private async findOrCreateChatRoom(
-    userId1: string,
-    userId2: string,
-  ): Promise<ChatRoom> {
-    // Tìm phòng chat có chính xác 2 người tham gia này
-    const chatRoom = await this.prisma.chatRoom.findFirst({
-      where: {
-        AND: [
-          { participants: { some: { user_id: userId1 } } },
-          { participants: { some: { user_id: userId2 } } },
-        ],
-        // Đảm bảo phòng chat chỉ có 2 người này
-        participants: {
-          every: { user_id: { in: [userId1, userId2] } },
-        },
-      },
-    });
-
-    if (chatRoom) {
-      return chatRoom;
+  // Tìm hoặc tạo phòng chat
+  async findOrCreateChatRoom(initiatorId: string, recipientId: string): Promise<ChatRoom> {
+    // 🔹 Ép kiểu chắc chắn cho ID
+    if (!initiatorId || !recipientId) {
+      throw new ForbiddenException('Invalid user IDs.');
     }
 
-    // Nếu không có, tạo phòng mới
-    const newChatRoom = await this.prisma.chatRoom.create({
-      data: {
+    // 🔹 Kiểm tra xem cả hai người dùng có tồn tại không
+    const [user1, user2] = await Promise.all([
+      this.prisma.user.count({ where: { user_id: initiatorId } }),
+      this.prisma.user.count({ where: { user_id: recipientId } }),
+    ]);
+
+    if (user1 === 0 || user2 === 0) {
+      throw new ForbiddenException('One or both users not found.');
+    }
+
+    // 🔹 Đã loại bỏ logic kiểm tra vai trò.
+    // Giờ đây, bất kỳ hai người dùng nào cũng có thể tạo phòng chat.
+    // Logic bảo mật đã được đảm bảo ở tầng gửi tin nhắn (chỉ thành viên mới được gửi).
+
+    // Tìm phòng chat hiện tại giữa hai người
+    // 🔹 Tối ưu hóa logic tìm kiếm để đảm bảo chỉ tìm phòng chat 1-1
+    const initiatorRooms = await this.prisma.chatRoom.findMany({
+      where: {
+        participants: { some: { userId: initiatorId } },
+      },
+      include: {
         participants: {
-          create: [{ user_id: userId1 }, { user_id: userId2 }],
+          select: { userId: true },
         },
       },
     });
 
-    return newChatRoom;
+    // Tìm phòng chỉ có 2 người và người còn lại là recipient
+    const privateRoom = initiatorRooms.find(room => 
+      room.participants.length === 2 && 
+      room.participants.some(p => p.userId === recipientId)
+    );
+    if (privateRoom) return privateRoom;
+
+    // Tạo mới nếu chưa có
+    const newRoom: ChatRoom = await this.prisma.chatRoom.create({
+      data: {
+        participants: {
+          create: [
+            { userId: initiatorId },
+            { userId: recipientId },
+          ],
+        },
+      },
+    });
+
+    return newRoom;
   }
 
-  async createConversation(userId1: string, userId2: string): Promise<ChatRoom> {
-    return this.findOrCreateChatRoom(userId1, userId2);
+  // Lấy tất cả phòng chat của một user
+  getUserChatRooms(userId: string): Promise<ChatRoomWithDetails[]> {
+    return this.prisma.chatRoom.findMany({
+      where: { participants: { some: { userId } } },
+      include: chatRoomWithDetails.include,
+    });
   }
 
+  // Lấy lịch sử tin nhắn của một phòng
+  async getChatMessages(
+    userId: string,
+    chatRoomId: string,
+    page = 1,
+    pageSize = 20
+  ): Promise<ChatMessageWithSender[]> {
+    const skip = (page - 1) * pageSize;
+
+    // 🔹 Kiểm tra xem user có phải là thành viên của phòng chat không
+    const room = await this.prisma.chatRoom.findFirst({
+      where: {
+        id: chatRoomId,
+        participants: {
+          some: { userId: userId },
+        },
+      },
+    });
+
+    if (!room) {
+      throw new ForbiddenException('You do not have access to this chat room.');
+    }
+
+    const messages: ChatMessageWithSender[] = await this.prisma.chatMessage.findMany({
+      where: { chatRoomId },
+      include: chatMessageWithSender.include,
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: pageSize,
+    });
+
+    return messages.reverse(); // trả về theo thứ tự cũ → mới
+  }
+
+  // Tạo tin nhắn mới
   async createMessage(
     senderId: string,
-    recipientId: string,
-    content: string,
-  ): Promise<ChatMessage> {
-    const chatRoom = await this.findOrCreateChatRoom(senderId, recipientId);
+    chatRoomId: string,
+    content: string
+  ): Promise<ChatMessageWithSender> {
+    if (!senderId || !chatRoomId || !content) {
+      throw new ForbiddenException('Missing required fields for message creation.');
+    }
 
-    return this.prisma.chatMessage.create({
-      data: {
-        content: content,
-        senderId: senderId,
-        chatRoomId: chatRoom.id,
-      },
-    });
-  }
-
-  async getConversations(userId: string) {
-    // Lấy tất cả các phòng chat mà người dùng này tham gia
-    const chatRooms = await this.prisma.chatRoom.findMany({
+    // 🔹 Thêm kiểm tra: người gửi có phải là thành viên của phòng chat không
+    const participant = await this.prisma.chatParticipant.findUnique({
       where: {
-        participants: {
-          some: {
-            user_id: userId,
-          },
-        },
-      },
-      include: {
-        // Lấy tin nhắn cuối cùng trong mỗi phòng
-        messages: {
-          orderBy: {
-            createdAt: 'desc',
-          },
-          take: 1,
-        },
-        // Lấy thông tin của những người tham gia khác (không phải user hiện tại)
-        participants: {
-          where: {
-            user_id: {
-              not: userId,
-            },
-          },
-          include: {
-            user: {
-              include: {
-                Patient: true,
-                Doctor: true,
-              },
-            },
-          },
+        userId_chatRoomId: {
+          userId: senderId,
+          chatRoomId: chatRoomId,
         },
       },
     });
 
-    // Lọc ra những phòng có tin nhắn và sắp xếp theo tin nhắn mới nhất
-    return chatRooms
-      .filter((room) => room.messages.length > 0)
-      .sort(
-        (a, b) =>
-          b.messages[0].createdAt.getTime() -
-          a.messages[0].createdAt.getTime(),
-      );
-  }
+    // Nếu không tìm thấy, tức là người dùng không có trong phòng chat
+    if (!participant) {
+      throw new ForbiddenException('You are not a member of this chat room and cannot send messages.');
+    }
 
-  async getMessageHistory(chatRoomId: string) {
-    return this.prisma.chatMessage.findMany({
-      where: { chatRoomId: chatRoomId },
-      orderBy: {
-        createdAt: 'asc',
+    const message: ChatMessageWithSender = await this.prisma.chatMessage.create({
+      data: {
+        senderId,
+        chatRoomId,
+        content,
       },
+      include: chatMessageWithSender.include,
     });
-  }
 
-  async searchUsers(name: string, role: string, currentUserId: string) {
-    if (role === 'doctor') {
-      return this.prisma.doctor.findMany({
-        where: {
-          full_name: {
-            contains: name,
-            mode: 'insensitive',
-          },
-          NOT: {
-            user_id: currentUserId,
-          },
-        },
-        include: {
-          User: true,
-          Specialty: true,
-        },
-      });
-    }
-
-    const whereCondition: any = {
-      NOT: {
-        id: currentUserId,
-      },
-    };
-
-    if (name) {
-      whereCondition.OR = [
-        {
-          first_name: {
-            contains: name,
-            mode: 'insensitive',
-          },
-        },
-        {
-          last_name: {
-            contains: name,
-            mode: 'insensitive',
-          },
-        },
-      ];
-    }
-
-    if (role) {
-      whereCondition.role = role;
-    }
-
-    return this.prisma.user.findMany({
-      where: whereCondition,
-      include: {
-        Patient: true,
-        Doctor: true,
-      },
-    });
+    return message;
   }
 }
