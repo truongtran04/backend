@@ -22,6 +22,7 @@ export class MediBotController {
   }
 
   @Sse(':conversationId/ask')
+  @UseGuards(JwtAuthGuard) // Thêm Guard để bảo vệ endpoint
   askQuestionStream(
     @Param('conversationId') conversationId: string,
     @Query(new ValidationPipe({ transform: true })) askDto: AskDto, // Use AskDto for validation via query params

@@ -15,7 +15,11 @@ export class WsJwtGuard implements CanActivate {
     context: ExecutionContext,
   ): boolean | Promise<boolean> | Observable<boolean> {
     const client: Socket = context.switchToWs().getClient<Socket>();
-    const token = this.extractTokenFromCookie(client);
+    // Prefer cookie token, but fall back to handshake auth token if provided by client
+    let token = this.extractTokenFromCookie(client);
+    if (!token && client.handshake && (client.handshake as any).auth && (client.handshake as any).auth.token) {
+      token = (client.handshake as any).auth.token as string;
+    }
 
     if (!token) {
       this.logger.warn('WS connection rejected: No token provided.');

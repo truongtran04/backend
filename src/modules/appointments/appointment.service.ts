@@ -14,6 +14,7 @@ import { ScheduleService } from "../schedules/schedule.service";
 import { StatusMessage, AppointmentStatus } from "./appointment.interface";
 import { SpecificationBuilder } from "src/classes/specification-builder.class";
 import { RELATIONS } from 'src/common/constants/relations.constant';
+import { Patient } from '@prisma/client';
 
 @Injectable()
 export class AppointmentService extends BaseService<AppointmentRepository, Appointment> {
@@ -56,15 +57,14 @@ export class AppointmentService extends BaseService<AppointmentRepository, Appoi
     }
 
     private async getPatientId(payload: IAuthUser): Promise<string>{
-
-        const user = await this.userService.findById(payload.userId)
-        if (!user) {
-            throw new BadRequestException('Không tìm thấy người dùng với id này');
-        }
-
-        const patient = await this.patientService.findByField('user_id',user.user_id)
+        // Lấy thông tin bệnh nhân trực tiếp từ user_id trong payload.
+        // Giả định patientService có phương thức findByField hoặc tương tự.
+        const patient = await this.patientService.findFirst({ user_id: payload.userId });
+        
+        // Nếu không tìm thấy hồ sơ bệnh nhân nào được liên kết với tài khoản người dùng này,
+        // đưa ra một lỗi rõ ràng.
         if (!patient) {
-            throw new BadRequestException('Không tìm thấy bệnh nhân tương ứng với user này');
+            throw new BadRequestException('Không tìm thấy hồ sơ bệnh nhân cho tài khoản này.');
         }
 
         return patient.patient_id
@@ -105,7 +105,13 @@ export class AppointmentService extends BaseService<AppointmentRepository, Appoi
 
         await this.scheduleService.save(isAvailable, schedule.schedule_id)
 
-        return data
+        // Sau khi lưu, cần tìm lại bản ghi vừa tạo và tải kèm các mối quan hệ cần thiết
+        // để quá trình transform dữ liệu trả về không bị lỗi.
+        const createdAppointmentWithRelations = await this.show(data.appointment_id, RELATIONS.APPOINTMENT);
+        if (!createdAppointmentWithRelations) {
+            throw new BadRequestException("Không thể tìm thấy lịch hẹn vừa tạo với các thông tin liên quan.");
+        }
+        return createdAppointmentWithRelations;
     }
 
     private async checkValidateAppointment(id: string, payload: IAuthUser): Promise<Appointment> {
@@ -161,6 +167,15 @@ export class AppointmentService extends BaseService<AppointmentRepository, Appoi
         const data = await this.show(appointment.appointment_id, RELATIONS.APPOINTMENT)
         
         return data
+    }
+
+    /**
+     * Helper to get patient profile from user ID
+     * @param userId The user ID from JWT
+     * @returns Patient profile or null
+     */
+    async getPatientProfile(userId: string): Promise<Patient | null> {
+        return this.patientService.findFirst({ user_id: userId });
     }
 
 }

@@ -14,6 +14,23 @@ export class AppointmentDTO {
     @Transform(({ obj }) => obj.Doctor.full_name ?? null)
     doctor_name: string;     
 
+    // Additional doctor info exposed for frontend convenience
+    @Expose()
+    @Transform(({ obj }) => obj.Doctor?.doctor_id ?? null)
+    doctor_id?: string;
+
+    @Expose()
+    @Transform(({ obj }) => obj.Doctor?.Specialty?.name ?? null)
+    doctor_specialty?: string;
+
+    @Expose()
+    @Transform(({ obj }) => obj.Doctor?.workplace ?? obj.Doctor?.clinic_address ?? null)
+    doctor_workplace?: string;
+
+    @Expose()
+    @Transform(({ obj }) => obj.Doctor?.avatar_url ?? null)
+    doctor_avatar_url?: string;
+
     @Expose()
     @Transform(({ obj }) => obj.DoctorSchedule.schedule_date ?? null)
     @Transform(ToLocalDate())

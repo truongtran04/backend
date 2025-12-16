@@ -1,4 +1,4 @@
-import { Body, Controller, Patch, HttpStatus, Logger, Post, Get, Param, Req, HttpCode, UseGuards, UnauthorizedException, Res, Put, Query } from '@nestjs/common';
+import { Body, Controller, Patch, HttpStatus, Logger, Post, Get, Param, Req, HttpCode, UseGuards, UnauthorizedException, Res, Put, Query, ForbiddenException } from '@nestjs/common';
 import { ValidationPipe } from '../../pipes/validation.pipe';
 import { ApiResponse } from 'src/common/bases/api-reponse';
 import type { TApiReponse } from 'src/common/bases/api-reponse';
@@ -66,7 +66,7 @@ export class AppointmentController extends BaseController<Appointment, 'appointm
         return ApiResponse.suscess(
             this.transformer.transformSingle(data, AppointmentDTO, [roleGroup]),
             'Success', 
-            HttpStatus.CREATED
+            HttpStatus.OK
         )
     }
 
@@ -148,6 +148,14 @@ export class AppointmentController extends BaseController<Appointment, 'appointm
     ) : Promise<TApiReponse<TModelOrPaginate<AppointmentDTO>>> {
 
         const roleGroup = req.user.role;
+        const user = req.user;
+
+        // Security enhancement: Doctors can only see their own appointments.
+        // Admins can see any doctor's appointments.
+        if (roleGroup === 'doctor' && user.doctorId !== id) {
+            throw new ForbiddenException('Bạn chỉ có thể xem danh sách lịch hẹn của chính mình.');
+        }
+
         query.doctor_id = id;
 
         const data: Appointment[] | IPaginateResult<Appointment> = await this.appointmentService.paginate(query, RELATIONS.APPOINTMENT)
@@ -175,6 +183,16 @@ export class AppointmentController extends BaseController<Appointment, 'appointm
     ) : Promise<TApiReponse<TModelOrPaginate<AppointmentDTO>>> {
 
         const roleGroup = req.user.role;
+        const user = req.user;
+
+        // Security enhancement: Patients can only see their own appointments.
+        // Admins can see any patient's appointments.
+        if (roleGroup === 'patient') {
+            const patientProfile = await this.appointmentService.getPatientProfile(user.userId);
+            if (!patientProfile || patientProfile.patient_id !== id) {
+                throw new ForbiddenException('Bạn chỉ có thể xem danh sách lịch hẹn của chính mình.');
+            }
+        }
         query.patient_id = id;
 
         const data: Appointment[] | IPaginateResult<Appointment> = await this.appointmentService.paginate(query, RELATIONS.APPOINTMENT)
@@ -205,7 +223,7 @@ export class AppointmentController extends BaseController<Appointment, 'appointm
         return ApiResponse.suscess(
             this.transformer.transformSingle(data, AppointmentDTO, [roleGroup]),
             'Success', 
-            HttpStatus.CREATED
+            HttpStatus.OK
         )
     }
 }
