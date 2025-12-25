@@ -1,34 +1,31 @@
-// src/chat/chat.service.ts
+
 import { BadRequestException, Injectable, Logger, OnModuleInit, ServiceUnavailableException, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Observable, from, map, filter, finalize, switchMap, of, catchError } from 'rxjs';
 
-// LangChain imports
+
 import { ChatOpenAI, OpenAIEmbeddings } from '@langchain/openai';
 import { FaissStore } from '@langchain/community/vectorstores/faiss';
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
+import { TextLoader } from "langchain/document_loaders/fs/text";
 import { DirectoryLoader } from 'langchain/document_loaders/fs/directory';
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 import { ChatPromptTemplate, MessagesPlaceholder, PromptTemplate } from '@langchain/core/prompts';
-import { RunnableSequence, RunnableWithMessageHistory } from '@langchain/core/runnables';
+import { RunnableWithMessageHistory } from '@langchain/core/runnables';
 import { StringOutputParser } from '@langchain/core/output_parsers';
-import { formatDocumentsAsString } from 'langchain/util/document';
 import { createHistoryAwareRetriever } from 'langchain/chains/history_aware_retriever';
 import { createStuffDocumentsChain } from 'langchain/chains/combine_documents';
 import { createRetrievalChain } from 'langchain/chains/retrieval';
 import { ContextualCompressionRetriever } from 'langchain/retrievers/contextual_compression';
 import { LLMChainExtractor } from 'langchain/retrievers/document_compressors/chain_extract';
-import { MultiQueryRetriever } from 'langchain/retrievers/multi_query';// import { RedisChatMessageHistory } from '@langchain/community/stores/message/redis';
+import { MultiQueryRetriever } from 'langchain/retrievers/multi_query';
 import { ChatMessageHistory } from "@langchain/community/stores/message/in_memory";
-import { createClient, RedisClientType } from 'redis';
-import * as crypto from 'crypto';
 
-// Định nghĩa kiểu cho sự kiện SSE
+
 export type SseMessage = { type: 'chunk' | 'sources' | 'error'; data: any };
 
 const VECTOR_STORE_PATH = 'vectorstore/db_faiss';
-const DATA_PATH = 'data';
-const CACHE_TTL_SECONDS = 3600; // Thời gian sống của cache là 1 giờ (3600 giây)
+const DATA_PATH = 'ViMedical Disease/Corpus';
 
 @Injectable()
 export class MediBotService implements OnModuleInit {
@@ -37,32 +34,27 @@ export class MediBotService implements OnModuleInit {
   private llm: ChatOpenAI;
   private smallLlm: ChatOpenAI;
   private conversationalChain: RunnableWithMessageHistory<any, any>;
-  // private redisClient: RedisClientType; // Tạm thời vô hiệu hóa Redis
-  private messageHistories: Map<string, ChatMessageHistory>; // Sử dụng Map để lưu trữ lịch sử trong bộ nhớ
-
-  // Thuộc tính giám sát hiệu suất
-  private totalQueries = 0;
-  private cacheHits = 0;
-  private cacheMisses = 0;
+ 
+  private messageHistories: Map<string, ChatMessageHistory>; 
+  private initializationError: string | null = null;
 
   constructor(private readonly configService: ConfigService) {}
-  // Hàm này sẽ được gọi khi module được khởi tạo
+  
   async onModuleInit() {
     try {
       this.logger.log('Đang khởi tạo MediBot Service...');
-      // --- Tạm thời vô hiệu hóa kết nối Redis ---
-      // this.logger.log('Đang kết nối tới Redis...');
-      // this.redisClient = createClient({ url: this.configService.get<string>('REDIS_URL') || 'redis://localhost:6379' });
-      // await this.redisClient.connect();
-      // this.redisClient.on('error', (err) => this.logger.error('Lỗi Redis Client:', err));
-      // this.logger.log('Kết nối Redis thành công.');
-      // --- Kết thúc phần vô hiệu hóa Redis ---
+  
       this.messageHistories = new Map(); // Khởi tạo Map cho lịch sử hội thoại
       await this.initializeChain();
       this.logger.log('MediBot Service đã được khởi tạo thành công.');
     } catch (error) {
-      this.logger.error('Lỗi nghiêm trọng khi khởi tạo service:', error);
-      // throw new InternalServerErrorException('Không thể khởi tạo MediBot Service. Vui lòng kiểm tra logs để biết chi tiết.', error.message);
+      if ((error as any).message?.includes('429') || (error as any).status === 429 || (error as any).code === 'insufficient_quota') {
+        this.logger.warn('⚠️ CẢNH BÁO: Hết hạn ngạch OpenAI (Quota Exceeded). Hệ thống sẽ chuyển sang chế độ trả lời giả lập (Mock Mode).');
+        this.initializationError = 'Chức năng chat tạm thời không khả dụng do hết hạn ngạch API.';
+      } else {
+        this.logger.error('Lỗi nghiêm trọng khi khởi tạo service:', error);
+        this.initializationError = 'Hệ thống đang gặp sự cố kỹ thuật. Vui lòng thử lại sau.';
+      }
     }
   }
 
@@ -76,7 +68,7 @@ export class MediBotService implements OnModuleInit {
     const vectorStoreRetriever = this.vectorStore.asRetriever();
     this.logger.log('Đã tạo vectorStoreRetriever.');
 
-    // Cải tiến 1: Sử dụng MultiQueryRetriever để tạo nhiều truy vấn từ câu hỏi gốc
+    
     this.logger.log('Đang khởi tạo MultiQueryRetriever...');
     const multiQueryRetriever = MultiQueryRetriever.fromLLM({
       llm: this.smallLlm,
@@ -134,18 +126,6 @@ export class MediBotService implements OnModuleInit {
     });
     this.logger.log('Conversational Chain đã được khởi tạo hoàn chỉnh.');
   }
-  
-  /**
-   * Trả về các chỉ số hiệu suất hiện tại của service.
-   */
-  public getMetrics() {
-    return {
-      totalQueries: this.totalQueries,
-      cacheHits: this.cacheHits,
-      cacheMisses: this.cacheMisses,
-      cacheHitRate: this.totalQueries > 0 ? (this.cacheHits / this.totalQueries) * 100 : 0,
-    };
-  }
 
   private getHistoryForSession(sessionId: string): ChatMessageHistory {
     // Lấy lịch sử từ Map, nếu chưa có thì tạo mới
@@ -160,8 +140,8 @@ export class MediBotService implements OnModuleInit {
       new MessagesPlaceholder('chat_history'),
       ['user', '{input}'],
       [
-        'user',
-        'Dựa vào cuộc trò chuyện trên, hãy tạo ra một câu hỏi tìm kiếm để có thể tìm thông tin liên quan đến câu hỏi cuối cùng.',
+        'system',
+        'Dựa vào lịch sử cuộc trò chuyện và câu hỏi mới nhất của người dùng, hãy viết lại câu hỏi đó thành một câu truy vấn tìm kiếm độc lập, đầy đủ ngữ cảnh y khoa để tra cứu trong cơ sở dữ liệu bệnh học. Không trả lời câu hỏi, chỉ viết lại câu hỏi.',
       ],
     ]);
   }
@@ -192,11 +172,17 @@ export class MediBotService implements OnModuleInit {
   }
 
   private createQuestionAnsweringPrompt(): ChatPromptTemplate {
-    const systemTemplate = `Sử dụng những thông tin dưới đây để trả lời câu hỏi của người dùng.
-      Nếu bạn không biết câu trả lời từ thông tin được cung cấp, hãy nói rằng bạn không biết, đừng cố bịa ra câu trả lời.
-      Hãy trả lời bằng tiếng Việt một cách thân thiện và dễ hiểu.
+    const systemTemplate = `Bạn là MediBot, một trợ lý y tế ảo thông minh và tận tâm.
+    Nhiệm vụ của bạn là hỗ trợ người dùng tra cứu thông tin về bệnh học dựa trên dữ liệu được cung cấp.
 
-      Context: {context}`;
+    HƯỚNG DẪN TRẢ LỜI:
+    1. Chỉ sử dụng thông tin trong phần "Context" dưới đây để trả lời. Tuyệt đối không bịa đặt thông tin.
+    2. Nếu thông tin không có trong Context, hãy lịch sự nói rằng bạn chưa có dữ liệu về vấn đề này và khuyên người dùng nên gặp bác sĩ.
+    3. Trình bày câu trả lời rõ ràng, mạch lạc, có thể sử dụng gạch đầu dòng cho các triệu chứng hoặc phương pháp điều trị.
+    4. Luôn giữ thái độ khách quan, chuyên nghiệp nhưng đồng cảm.
+    5. CẢNH BÁO QUAN TRỌNG: Cuối câu trả lời, hãy luôn thêm câu: "Thông tin chỉ mang tính chất tham khảo. Vui lòng tham vấn ý kiến bác sĩ chuyên khoa để có chẩn đoán chính xác."
+
+    Context: {context}`;
     return ChatPromptTemplate.fromMessages([
       ['system', systemTemplate],
       new MessagesPlaceholder('chat_history'),
@@ -220,35 +206,26 @@ export class MediBotService implements OnModuleInit {
     this.logger.log(`Đang tải tài liệu từ thư mục: ${DATA_PATH}`);
     const loader = new DirectoryLoader(DATA_PATH, {
       '.pdf': (path) => new PDFLoader(path),
+      '.html': (path) => new TextLoader(path),
+      '.txt': (path) => new TextLoader(path),
     });
     const docs = await loader.load();
     this.logger.log(`Đã tải ${docs.length} tài liệu.`);
-    // const loader = new DirectoryLoader(DATA_PATH, {
-    //   '.pdf': (path) => new PDFLoader(path),
-    // });
-    // const docs = await loader.load();
-    // this.logger.log(`Đã tải ${docs.length} tài liệu.`);
+
 
     const textSplitter = new RecursiveCharacterTextSplitter({
       chunkSize: 1000,
-      chunkOverlap: 100,
+      chunkOverlap: 200, // Tăng overlap để giữ ngữ cảnh tốt hơn cho các thuật ngữ y khoa
     });
     const splitDocs = await textSplitter.splitDocuments(docs);
     this.logger.log(`Tài liệu đã được chia thành ${splitDocs.length} đoạn.`);
-    // const textSplitter = new RecursiveCharacterTextSplitter({
-    //   chunkSize: 1000,
-    //   chunkOverlap: 100,
-    // });
-    // const splitDocs = await textSplitter.splitDocuments(docs);
-    // this.logger.log(`Tài liệu đã được chia thành ${splitDocs.length} đoạn.`);
+
 
     this.logger.log('Đang tạo vector embeddings và chỉ mục FAISS...');
     const vectorStore = await FaissStore.fromDocuments(splitDocs, embeddings);
     await vectorStore.save(VECTOR_STORE_PATH);
     this.logger.log(`Đã tạo và lưu trữ vector store mới tại: ${VECTOR_STORE_PATH}`);
-    // const vectorStore = await FaissStore.fromDocuments(splitDocs, embeddings);
-    // await vectorStore.save(VECTOR_STORE_PATH);
-    // this.logger.log(`Đã tạo và lưu trữ vector store mới tại: ${VECTOR_STORE_PATH}`);
+
 
     return vectorStore;
   }
@@ -277,39 +254,36 @@ export class MediBotService implements OnModuleInit {
     return trimmedQuery;
   }
 
+  getMetrics() {
+    return {
+      status: 'active',
+      timestamp: new Date(),
+      uptime: process.uptime(),
+    };
+  }
+
   async askQuestionStream(query: string, conversationId: string): Promise<Observable<SseMessage>> {
-    const startTime = Date.now();
-    this.totalQueries++;
 
     const sanitizedQuery = this.validateAndSanitizeInput(query);
 
     this.logger.log(`Nhận câu hỏi đã làm sạch cho session ${conversationId}: "${sanitizedQuery}"`);
 
+    if (this.initializationError) {
+      this.logger.warn(`Service chưa sẵn sàng: ${this.initializationError}. Trả về phản hồi giả lập.`);
+      return from([
+        { type: 'chunk', data: '⚠️ **Hệ thống**: Kết nối OpenAI tạm thời gián đoạn do hết hạn mức (Quota Exceeded). ' },
+        { type: 'chunk', data: 'Đây là tin nhắn tự động giúp bạn tiếp tục kiểm tra giao diện ứng dụng.\n\n' },
+        { type: 'chunk', data: `Bạn vừa hỏi: "${sanitizedQuery}"` },
+        { type: 'sources', data: ['Mock Data Source'] }
+      ] as SseMessage[]);
+    }
 
     if (!this.conversationalChain) {
       this.logger.error('Chuỗi hội thoại chưa được khởi tạo.');
       throw new ServiceUnavailableException('Hệ thống chưa sẵn sàng, vui lòng thử lại sau.'); //
     }
 
-    // --- Tạm thời vô hiệu hóa Caching ---
-    // // Tạo cache key bằng cách kết hợp conversationId và hash của câu hỏi đã làm sạch
-    // const cacheKey = `query_cache:${conversationId}:${crypto.createHash('sha256').update(sanitizedQuery).digest('hex')}`; //
-
-    // try {
-    //   // 1. Kiểm tra cache
-    //   const cachedResult = await this.redisClient.get(cacheKey); //
-    //   if (cachedResult) {
-    //     this.cacheHits++;
-    //     this.logger.log(`Cache hit cho session ${conversationId}, query: "${sanitizedQuery}"`); //
-    //     const messages: SseMessage[] = JSON.parse(cachedResult); //
-    //     return from(messages); // Trả về kết quả từ cache dưới dạng Observable
-    //   }
-    // } catch (cacheError) {
-    //   this.logger.error(`Lỗi khi đọc cache hoặc parse JSON cho session ${conversationId}:`, cacheError); //
-    //   // Nếu có lỗi với cache, chúng ta sẽ bỏ qua cache và tiếp tục xử lý truy vấn
-    // }
-    // this.cacheMisses++;
-    // --- Kết thúc phần vô hiệu hóa Caching ---
+    
 
     this.logger.log(`Cache miss cho session ${conversationId}, query: "${sanitizedQuery}". Đang xử lý truy vấn...`); //
 
@@ -332,19 +306,7 @@ export class MediBotService implements OnModuleInit {
       }),
       filter((message): message is SseMessage => message !== null), // Lọc bỏ các chunk null
       finalize(async () => {
-        const duration = Date.now() - startTime;
-        this.logger.log(`Truy vấn cho session ${conversationId} hoàn tất trong ${duration}ms.`);
-        // --- Tạm thời vô hiệu hóa Caching ---
-        // // Khi stream hoàn tất, lưu toàn bộ kết quả vào cache
-        // if (accumulatedChunks.length > 0) {
-        //   try {
-        //     await this.redisClient.setEx(cacheKey, CACHE_TTL_SECONDS, JSON.stringify(accumulatedChunks)); //
-        //     this.logger.log(`Đã lưu kết quả vào cache cho session ${conversationId}, query: "${sanitizedQuery}"`); //
-        //   } catch (cacheError) {
-        //     this.logger.error(`Lỗi khi lưu vào cache cho session ${conversationId}:`, cacheError); //
-        //   }
-        // }
-        // --- Kết thúc phần vô hiệu hóa Caching ---
+        
       }),
       catchError(error => {
         this.logger.error(`Lỗi trong luồng xử lý truy vấn cho session ${conversationId}:`, error); //
