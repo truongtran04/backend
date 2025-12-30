@@ -75,10 +75,6 @@ export class ScheduleController extends BaseController<DoctorSchedule, 'schedule
         )
     }
 
-    @GuardType(GUARD)
-    @UseGuards(JwtAuthGuard, ActiveUserGuard, RolesGuard)
-    @Roles('admin', 'doctor', 'patient')
-    @Get(':id')
     @HttpCode(HttpStatus.OK)
     async show(
         @Param('id') id: string,
@@ -95,25 +91,16 @@ export class ScheduleController extends BaseController<DoctorSchedule, 'schedule
         )
     }
 
-    @GuardType(GUARD)
-    @UseGuards(JwtAuthGuard, ActiveUserGuard, RolesGuard)
-    @Roles('admin', 'doctor', 'patient')
-    @Get()
+    @Get('/doctor')
     @HttpCode(HttpStatus.OK)
     async getListSchedulesByDoctor(
         @Query() query: Record<string, any>,
-        @Req() req,
     ): Promise<TApiReponse<TModelOrPaginate<ScheduleDTO>>>{
-
-        const role = req.user.role
-        const doctorId = this.scheduleService.getDoctorId(req.user)
-        query.doctor_id = doctorId;
-        
         const data: DoctorSchedule[] | IPaginateResult<DoctorSchedule> = await this.scheduleService.paginate(query, RELATIONS.SCHEDULE)
         
         const dataTransform: TModelOrPaginate<ScheduleDTO> = Array.isArray(data)
-            ? this.transformer.transformArray(data, ScheduleDTO, [role])
-            : this.transformer.transformPaginated(data, ScheduleDTO, [role])
+            ? this.transformer.transformArray(data, ScheduleDTO)
+            : this.transformer.transformPaginated(data, ScheduleDTO)
 
         return ApiResponse.suscess(
             dataTransform, 

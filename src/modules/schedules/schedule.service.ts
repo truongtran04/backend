@@ -31,11 +31,12 @@ export class ScheduleService extends BaseService<ScheduleRepository, DoctorSched
             prismaService,
             new SpecificationBuilder({
                 defaultSort: 'created_at, desc',
-                searchFields: ['schedule_date'],
-                simpleFilter: ['schedule_date'],
+                searchFields: ['schedule_date', 'doctor_id'],
+                simpleFilter: ['schedule_date', 'doctor_id'],
                 dateFilter: ['created_at', 'updated_at'],
                 fieldTypes: {
                     schedule_date: 'string',
+                    doctor_id: 'string'
                 }
             })
         )

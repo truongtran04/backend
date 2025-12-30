@@ -6,7 +6,7 @@ export class ScheduleDTO {
     @Expose({ name: 'schedule_id' })
     id: string;
 
-    @Expose({ groups: ['doctor', 'admin', 'patient'] })
+    @Expose()
     @Transform(({ obj }) => obj.Doctor.full_name ?? null)
     doctor_name: string;
 
