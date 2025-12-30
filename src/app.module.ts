@@ -5,8 +5,6 @@ import { AuthModule } from './modules/auth/auth.module';
 import { UserModule } from './modules/users/user.module'; 
 import { CacheModule } from '@nestjs/cache-manager';
 import { createKeyv }  from '@keyv/redis';
-import { Keyv } from 'keyv';
-import { CacheableMemory } from 'cacheable';
 import { PrismaModule } from './prisma/prisma.module';
 import { MailModule } from './modules/mail/mail.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -20,7 +18,7 @@ import { ScheduleModule } from './modules/schedules/schedule.module';
 import { AppointmentModule } from './modules/appointments/appointment.module';
 import { SupabaseModule } from './modules/supabase/supabase.module';
 import { ChatModule } from './modules/chat/chat.module';
-
+import { MediBotModule } from './modules/MediBot/medibot.module';
 @Module({
   imports: [
     AuthModule,
@@ -31,11 +29,12 @@ import { ChatModule } from './modules/chat/chat.module';
     ValidateModule,
     SpecialtyModule,
     PatientModule,
+    ChatModule,
     DoctorModule,
     ScheduleModule,
     AppointmentModule,
     SupabaseModule,
-    ChatModule,
+    MediBotModule,
     ConfigModule.forRoot({
       isGlobal: true,
     }),

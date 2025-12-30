@@ -2,7 +2,8 @@ import { CanActivate, ExecutionContext, Injectable, Logger } from '@nestjs/commo
 import { JwtService } from '@nestjs/jwt';
 import { Observable } from 'rxjs';
 import { Socket } from 'socket.io';
-import { IAuthUser } from 'src/modules/auth/auth.interface';
+import { jwtConstants } from 'src/modules/auth/auth.constant';
+import { IJwtPayload } from 'src/modules/auth/auth.interface';
 
 @Injectable()
 export class WsJwtGuard implements CanActivate {
@@ -14,7 +15,11 @@ export class WsJwtGuard implements CanActivate {
     context: ExecutionContext,
   ): boolean | Promise<boolean> | Observable<boolean> {
     const client: Socket = context.switchToWs().getClient<Socket>();
-    const token = this.extractTokenFromCookie(client);
+    // Prefer cookie token, but fall back to handshake auth token if provided by client
+    let token = this.extractTokenFromCookie(client);
+    if (!token && client.handshake && (client.handshake as any).auth && (client.handshake as any).auth.token) {
+      token = (client.handshake as any).auth.token as string;
+    }
 
     if (!token) {
       this.logger.warn('WS connection rejected: No token provided.');
@@ -22,9 +27,9 @@ export class WsJwtGuard implements CanActivate {
     }
 
     try {
-      const payload: IAuthUser = this.jwtService.verify(token, { secret: process.env.JWT_SECRET });
+      const payload: IJwtPayload = this.jwtService.verify(token, { secret: jwtConstants.secret });
       // Gắn thông tin user vào socket để sử dụng ở các bước sau
-      client['user'] = { userId: payload.userId, role: payload.role, guard: payload.guard };
+      client['user'] = { userId: payload.sub, role: payload.role, guard: payload.guard };
     } catch (e) {
       this.logger.error('WS connection rejected: Invalid token.', e.message);
       return false;

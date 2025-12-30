@@ -7,8 +7,8 @@ import { QueryBuilder } from "src/classes/query-builder.class";
 export interface IBaseRepository <TModel, ID = string> {
     setTransactionClient(tx: unknown): void,
     findById(id: ID, include?: Record<string, boolean>): Promise<TModel | null>,
-    findByField(field: string, value: string | number): Promise<TModel | null>,
-    findFirst(where: Partial<TModel>): Promise<TModel | null>,
+    findByField(field: string, value: string | number, include?: any): Promise<TModel | null>,
+    findFirst(where: Partial<TModel>, include?: any): Promise<TModel | null>,
     update<P extends Partial<TModel>>(id: ID, payload: P): Promise<TModel>,
     create<P extends Partial<TModel>>(payload: P): Promise<TModel>,
     delete(id: ID) : Promise<TModel>,
@@ -67,10 +67,12 @@ export class BaseRepository <T extends PrismaModel<TModel>, TModel, ID = string>
         })
     }
 
-    async findFirst(where: Partial<TModel>): Promise<TModel | null> {
-        return await this.model.findFirst({
-            where: where as any
-        });
+    async findFirst(where: Partial<TModel>, include?: any): Promise<TModel | null> {
+        const query: any = { where };
+        if (include) {
+            query.include = include;
+        }
+        return await this.model.findFirst(query);
     }
 
 

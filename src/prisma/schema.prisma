@@ -26,6 +26,11 @@ enum Role {
   admin
 }
 
+enum ConversationType {
+  patient_doctor
+  doctor_doctor
+}
+
 enum Gender {
   male
   female
@@ -165,32 +170,50 @@ model Appointment {
 }
 
 model ChatRoom {
-  id            String            @id @default(cuid())
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
-  participants  ChatParticipant[]
-  messages      ChatMessage[]
+  id                  String                @id @default(cuid())
+  type                ConversationType      @default(patient_doctor)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  participants        ChatParticipant[]
+  messages            ChatMessage[]
+  lastMessageAt       DateTime?
+
+  @@index([type])
+  @@index([createdAt])
+  @@map("chat_rooms")
 }
 
 model ChatParticipant {
-  id          String    @id @default(cuid())
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  user        User      @relation(fields: [userId], references: [user_id])
-  userId      String
-  chatRoom    ChatRoom  @relation(fields: [chatRoomId], references: [id])
-  chatRoomId  String
+  id                  String                @id @default(cuid())
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  user                User                  @relation(fields: [userId], references: [user_id], onDelete: Cascade)
+  userId              String
+  chatRoom            ChatRoom              @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  chatRoomId          String
+  lastReadMessageId   String?
+  lastReadAt          DateTime?
 
   @@unique([userId, chatRoomId])
+  @@index([chatRoomId])
+  @@index([userId])
+  @@map("chat_participants")
 }
 
 model ChatMessage {
-  id              String    @id @default(cuid())
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  content         String
-  sender          User      @relation(fields: [senderId], references: [user_id])
-  senderId        String
-  chatRoom        ChatRoom  @relation(fields: [chatRoomId], references: [id])
-  chatRoomId      String
+  id                  String                @id @default(cuid())
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  content             String
+  isEdited            Boolean               @default(false)
+  isDeleted           Boolean               @default(false)
+  sender              User                  @relation(fields: [senderId], references: [user_id], onDelete: Cascade)
+  senderId            String
+  chatRoom            ChatRoom              @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  chatRoomId          String
+
+  @@index([chatRoomId])
+  @@index([senderId])
+  @@index([createdAt])
+  @@map("chat_messages")
 }

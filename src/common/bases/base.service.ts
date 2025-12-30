@@ -47,9 +47,19 @@ export class BaseService<R extends IBaseRepository<TModel, ID>, TModel,  ID = st
         return this.getResult<TModel>()
     }
 
-    async findFirst(where: Partial<TModel>): Promise<TModel | null> {
-        this.result = await this.repository.findFirst(where)
-        return this.getResult<TModel>()
+    async findFirst(where: Partial<TModel>, relations?: string[] | string): Promise<TModel | null> {
+        let include: any = undefined;
+        if (relations) {
+            include = this.buildInclude(relations);
+        }
+
+        return this.repository.findFirst(where, include);
+    }
+    private buildInclude(relations: string[] | string): Record<string, boolean> {
+        const include: Record<string, boolean> = {};
+        const relationArray = Array.isArray(relations) ? relations : [relations];
+        relationArray.forEach(rel => (include[rel] = true));
+        return include;
     }
 
 

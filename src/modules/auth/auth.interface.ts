@@ -3,6 +3,8 @@ import { Patient } from "../patients/patient.interface";
 import { LoginDTO } from "./dto/login.dto";
 import { Request } from 'express';
 import { RegisterDTO } from "./dto/register.dto";
+import { Role } from "@prisma/client";
+
 
 export interface ILoginResponse {
     accessToken: string,
@@ -12,6 +14,7 @@ export interface ILoginResponse {
 }
 
 export interface IJwtPayload {
+    role: Role,
     sub: string,
     iat: number,
     exp: number,
