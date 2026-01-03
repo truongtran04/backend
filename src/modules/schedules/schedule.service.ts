@@ -30,12 +30,11 @@ export class ScheduleService extends BaseService<ScheduleRepository, DoctorSched
             prismaService,
             new SpecificationBuilder({
                 defaultSort: 'start_time,asc',
-                searchFields: ['schedule_date'],
+                searchFields: ['schedule_date', 'doctor_id'],
                 simpleFilter: ['doctor_id', 'is_available'],
                 dateFilter: ['schedule_date', 'created_at', 'updated_at'],
                 fieldTypes: {
-                    // ✅ FIXED: Remove schedule_date from fieldTypes
-                    // dateFilter already handles date fields
+                    doctor_id: 'string',
                     is_available: 'boolean',
                 }
             })
@@ -67,92 +66,12 @@ export class ScheduleService extends BaseService<ScheduleRepository, DoctorSched
         return doctor.doctor_id;
     }
 
-    /**
-     * 🆕 NEW: Lấy danh sách các ngày có lịch khám của bác sĩ
-     * @param doctorId ID của bác sĩ
-     * @param fromDate Ngày bắt đầu (YYYY-MM-DD), default: hôm nay
-     * @param toDate Ngày kết thúc (YYYY-MM-DD), default: +30 ngày
-     * @param availableOnly Chỉ lấy lịch còn trống
-     * @returns Array các ngày theo format YYYY-MM-DD
-     */
-    async getAvailableDates(
-        doctorId: string,
-        fromDate?: string,
-        toDate?: string,
-        availableOnly: boolean = true
-    ): Promise<string[]> {
-        try {
-            // Parse dates
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
 
-            const startDate = fromDate 
-                ? this.parseDate(fromDate)
-                : today;
-
-            const defaultEndDate = new Date(today);
-            defaultEndDate.setDate(defaultEndDate.getDate() + 30);
-
-            const endDate = toDate
-                ? this.parseDate(toDate)
-                : defaultEndDate;
-
-            this.serviceLogger.log(`Getting available dates for doctor ${doctorId} from ${startDate.toISOString()} to ${endDate.toISOString()}`);
-
-            // Query schedules using Prisma directly
-            const whereClause: any = {
-                doctor_id: doctorId,
-                schedule_date: {
-                    gte: startDate,
-                    lte: endDate,
-                },
-            };
-
-            if (availableOnly) {
-                whereClause.is_available = true;
-            }
-
-            // ✅ FIXED: Use repository or prisma directly instead of findAll
-            const schedules = await this.prismaService.doctorSchedule.findMany({
-    where: whereClause,
-    orderBy: {
-        schedule_date: 'asc'
-    }
-});
-
-            this.serviceLogger.log(`Found ${schedules.length} schedules`);
-
-            // Extract unique dates and format as YYYY-MM-DD
-            const uniqueDates = new Set<string>();
-            
-            schedules.forEach(schedule => {
-                const date = new Date(schedule.schedule_date);
-                const formatted = this.formatDateToYYYYMMDD(date);
-                uniqueDates.add(formatted);
-            });
-
-            const result = Array.from(uniqueDates).sort();
-            
-            this.serviceLogger.log(`Returning ${result.length} unique dates: ${result.join(', ')}`);
-
-            return result;
-        } catch (error) {
-            this.serviceLogger.error(`Error getting available dates: ${error.message}`, error.stack);
-            throw new BadRequestException(`Không thể lấy danh sách ngày: ${error.message}`);
-        }
-    }
-
-    /**
-     * Helper: Parse date string (YYYY-MM-DD) to Date object at start of day UTC
-     */
     private parseDate(dateStr: string): Date {
         const [year, month, day] = dateStr.split('-').map(Number);
         return new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
     }
 
-    /**
-     * Helper: Format Date object to YYYY-MM-DD
-     */
     private formatDateToYYYYMMDD(date: Date): string {
         const year = date.getUTCFullYear();
         const month = String(date.getUTCMonth() + 1).padStart(2, '0');
@@ -160,25 +79,15 @@ export class ScheduleService extends BaseService<ScheduleRepository, DoctorSched
         return `${year}-${month}-${day}`;
     }
 
-    /**
-     * ✅ UPDATED: Convert to UTC with proper date format
-     * Now expects YYYY-MM-DD format instead of DD-MM-YYYY
-     */
     private async convertToLocal(request: ScheduleRequest): Promise<ScheduleUTC> {
-        // ✅ FIX: Đơn giản hóa việc xử lý thời gian.
-        // Tạo đối tượng Date trực tiếp từ chuỗi YYYY-MM-DD và HH:mm.
-        // JavaScript sẽ tự động hiểu đây là thời gian local của máy chủ.
-        // Prisma sẽ xử lý việc chuyển đổi sang UTC khi lưu vào cơ sở dữ liệu.
         const scheduleDate = new Date(`${request.schedule_date}T00:00:00`);
         const startTime = new Date(`${request.schedule_date}T${request.start_time}:00`);
         const endTime = new Date(`${request.schedule_date}T${request.end_time}:00`);
 
-        // ✅ FIX: Thêm kiểm tra tính hợp lệ của ngày ngay sau khi tạo.
-        // Điều này ngăn chặn lỗi "Invalid Date" lan truyền xuống các hàm bên dưới.
         if (isNaN(scheduleDate.getTime()) || isNaN(startTime.getTime()) || isNaN(endTime.getTime())) {
             throw new BadRequestException(`Định dạng ngày hoặc giờ không hợp lệ. Vui lòng sử dụng YYYY-MM-DD và HH:mm.`);
         }
-        
+
         return {
             schedule_date: scheduleDate,
             start_time: startTime,
@@ -201,8 +110,6 @@ export class ScheduleService extends BaseService<ScheduleRepository, DoctorSched
     }
 
     private validateScheduleDate(scheduleDate: Date, now: Date): void {
-        // ✅ FIX: So sánh ngày một cách đơn giản.
-        // Chuẩn hóa 'hôm nay' về đầu ngày (00:00:00) theo giờ local của server.
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
         if (scheduleDate < today) {
@@ -223,9 +130,7 @@ export class ScheduleService extends BaseService<ScheduleRepository, DoctorSched
         }
     }
 
-    private validateWorkingHours(startTimeStr: string, endTimeStr: string): void {
-        // ✅ FIX: Phân tích trực tiếp từ chuỗi HH:mm để tránh hoàn toàn các vấn đề về múi giờ.
-        const [startHour, startMinute] = startTimeStr.split(':').map(Number);
+    private validateWorkingHours(startTimeStr: string, endTimeStr: string): void {const [startHour, startMinute] = startTimeStr.split(':').map(Number);
         const [endHour, endMinute] = endTimeStr.split(':').map(Number);
         const startMinutes = startHour * 60 + startMinute;
         const endMinutes = endHour * 60 + endMinute;
@@ -257,7 +162,6 @@ export class ScheduleService extends BaseService<ScheduleRepository, DoctorSched
 
     private validateDuration(startTimeStr: string, endTimeStr: string): void {
         const REQUIRED_DURATION_MINUTES = 30;
-        // ✅ FIX: Phân tích trực tiếp từ chuỗi HH:mm để tránh các vấn đề về múi giờ.
         const [startHour, startMinute] = startTimeStr.split(':').map(Number);
         const [endHour, endMinute] = endTimeStr.split(':').map(Number);
         const startTotalMinutes = startHour * 60 + startMinute;
@@ -276,10 +180,6 @@ export class ScheduleService extends BaseService<ScheduleRepository, DoctorSched
         endTime: Date
     ): Promise<void> {
         const { startOfDay, endOfDay } = this.getDayBoundaries(scheduleDate);
-
-        // ✅ FIX: Thêm điều kiện `doctor_id: doctorId` vào mệnh đề `where`.
-        // Điều này đảm bảo rằng việc kiểm tra xung đột chỉ được thực hiện
-        // trên các lịch của chính bác sĩ đang tạo lịch, không phải của tất cả bác sĩ.
         const existingSchedule = await this.prismaService.doctorSchedule.findFirst({
             where: {
                 doctor_id: doctorId,
@@ -291,7 +191,7 @@ export class ScheduleService extends BaseService<ScheduleRepository, DoctorSched
                 end_time: { gt: startTime },
             },
         });
- 
+
         if (existingSchedule) {
             throw new BadRequestException(
                 'Bác sĩ đã có lịch ở khung giờ này, vui lòng chọn giờ khác'
@@ -300,7 +200,6 @@ export class ScheduleService extends BaseService<ScheduleRepository, DoctorSched
     }
 
     private getDayBoundaries(date: Date): { startOfDay: Date; endOfDay: Date } {
-        // ✅ FIX: Thêm kiểm tra để đảm bảo đối tượng Date hợp lệ trước khi sử dụng.
         if (isNaN(date.getTime())) {
             throw new BadRequestException('Ngày cung cấp không hợp lệ.');
         }
@@ -333,7 +232,7 @@ export class ScheduleService extends BaseService<ScheduleRepository, DoctorSched
 
         for (const schedule of request) {
             const checkData = await this.checkDateTime(doctorId, schedule);
-            
+
             const created = await this.save({
                 doctor_id: doctorId,
                 ...checkData
@@ -342,7 +241,7 @@ export class ScheduleService extends BaseService<ScheduleRepository, DoctorSched
             const fullData = await this.show(created.schedule_id, RELATIONS.SCHEDULE);
             results.push(fullData);
         }
-        
+
         return results;
     }
 }

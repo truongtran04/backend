@@ -236,4 +236,17 @@ export class DoctorService extends BaseService<DoctorRepository, Doctor> {
         return results;
     }
 
+
+    async getUserIdByDoctorId(doctorId: string): Promise<string> {
+        const doctor = await this.findById(doctorId);
+        if (!doctor) {
+            throw new BadRequestException('Không tìm thấy bác sĩ với ID đã cho');
+        }
+        return doctor.user_id;
+    }
+
+    async countDoctors(): Promise<number> {
+        return await this.doctorRepository.countDoctors();
+    }   
+
 }

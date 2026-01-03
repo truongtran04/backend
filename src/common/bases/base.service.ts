@@ -55,6 +55,60 @@ export class BaseService<R extends IBaseRepository<TModel, ID>, TModel,  ID = st
 
         return this.repository.findFirst(where, include);
     }
+
+    async showAll(query?: Record<string, any>, include?: Record<string, boolean>, limit?: number, offset?: number): Promise<TModel[]> {
+        // Tách các tham số đặc biệt ra khỏi query (limit, offset, page)
+        const specialKeys = ['limit', 'offset', 'page', 'perpage'];
+        let where: Partial<TModel> | undefined = undefined;
+        let actualLimit: number | undefined = limit;
+        let actualOffset: number | undefined = offset;
+        
+        if (query && Object.keys(query).length > 0) {
+            const filteredQuery: any = {};
+            Object.keys(query).forEach(key => {
+                // Bỏ qua các tham số đặc biệt
+                if (specialKeys.includes(key.toLowerCase())) {
+                    // Xử lý limit
+                    if (key.toLowerCase() === 'limit' && !actualLimit) {
+                        const limitValue = parseInt(query[key], 10);
+                        if (!isNaN(limitValue) && limitValue > 0) {
+                            actualLimit = limitValue;
+                        }
+                    }
+                    // Xử lý offset
+                    if (key.toLowerCase() === 'offset' && !actualOffset) {
+                        const offsetValue = parseInt(query[key], 10);
+                        if (!isNaN(offsetValue) && offsetValue >= 0) {
+                            actualOffset = offsetValue;
+                        }
+                    }
+                    // Xử lý page (tính offset từ page)
+                    if (key.toLowerCase() === 'page' && !actualOffset) {
+                        const pageValue = parseInt(query[key], 10);
+                        const perpageValue = query['perpage'] ? parseInt(query['perpage'], 10) : 10;
+                        if (!isNaN(pageValue) && pageValue > 0) {
+                            actualOffset = (pageValue - 1) * perpageValue;
+                        }
+                    }
+                    return;
+                }
+                
+                const value = query[key];
+                // Chỉ thêm vào where nếu value không phải null, undefined, hoặc chuỗi rỗng
+                if (value !== null && value !== undefined && value !== '') {
+                    filteredQuery[key] = value;
+                }
+            });
+            
+            if (Object.keys(filteredQuery).length > 0) {
+                where = filteredQuery as Partial<TModel>;
+            }
+        }
+        
+        this.result = await this.findMany(where, include, actualLimit, actualOffset)
+        return this.getResult<TModel[]>()
+    }
+
     private buildInclude(relations: string[] | string): Record<string, boolean> {
         const include: Record<string, boolean> = {};
         const relationArray = Array.isArray(relations) ? relations : [relations];

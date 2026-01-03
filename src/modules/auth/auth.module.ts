@@ -10,6 +10,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { MailModule } from '../mail/mail.module';
 import { QueueModule } from '../queue/queue.module';
 import { PatientModule } from '../patients/patient.module';
+import { DoctorModule } from '../doctors/doctor.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { PatientModule } from '../patients/patient.module';
     UserModule,
     MailModule,
     QueueModule,
+    DoctorModule,
     PatientModule
   ],
   controllers: [AuthController],

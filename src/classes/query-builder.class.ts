@@ -139,7 +139,7 @@ export class QueryBuilder <T>{
 
     async paginate(
         page: number = 1,
-        perpage: number = 20
+        perpage: number = 500
     ):Promise<IPaginateResult<T>>{
 
         const total = await this.count()

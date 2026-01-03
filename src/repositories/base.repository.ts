@@ -9,6 +9,7 @@ export interface IBaseRepository <TModel, ID = string> {
     findById(id: ID, include?: Record<string, boolean>): Promise<TModel | null>,
     findByField(field: string, value: string | number, include?: any): Promise<TModel | null>,
     findFirst(where: Partial<TModel>, include?: any): Promise<TModel | null>,
+    findMany(where?: Partial<TModel>, include?: any, limit?: number, offset?: number): Promise<TModel[]>,
     update<P extends Partial<TModel>>(id: ID, payload: P): Promise<TModel>,
     create<P extends Partial<TModel>>(payload: P): Promise<TModel>,
     delete(id: ID) : Promise<TModel>,
@@ -75,6 +76,27 @@ export class BaseRepository <T extends PrismaModel<TModel>, TModel, ID = string>
         return await this.model.findFirst(query);
     }
 
+    async findMany(where?: Partial<TModel>, include?: any, limit?: number, offset?: number): Promise<TModel[]> {
+        const query: any = {};
+        
+        if (where && Object.keys(where).length > 0) {
+            query.where = where;
+        }
+        
+        if (include && Object.keys(include).length > 0) {
+            query.include = include;
+        }
+        
+        if (limit !== undefined && limit > 0) {
+            query.take = limit;
+        }
+        
+        if (offset !== undefined && offset > 0) {
+            query.skip = offset;
+        }
+        
+        return await this.model.findMany(query);
+    }
 
     async update<P extends Partial<TModel>>(id: ID, payload: P): Promise<TModel> {
         return await this.model.update({

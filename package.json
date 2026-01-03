@@ -2,7 +2,6 @@
   "name": "backend",
   "version": "0.0.1",
   "prisma": {
-    "schema": "src/prisma/schema.prisma",
     "seed": "ts-node src/prisma/seeds/database.seed.ts"
   },
   "description": "",
@@ -38,8 +37,9 @@
     "@nestjs/mapped-types": "^2.1.0",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.1",
-    "@nestjs/platform-socket.io": "^11.1.9",
-    "@nestjs/websockets": "^11.1.9",
+    "@nestjs/platform-socket.io": "^11.1.11",
+    "@nestjs/swagger": "^11.2.3",
+    "@nestjs/websockets": "^11.1.11",
     "@prisma/client": "^6.15.0",
     "@supabase/supabase-js": "^2.75.0",
     "@types/cookie-parser": "^1.4.9",
@@ -49,7 +49,7 @@
     "cache-manager": "^7.2.0",
     "cacheable": "^2.1.0",
     "class-transformer": "^0.5.1",
-    "class-validator": "^0.14.2",
+    "class-validator": "^0.14.3",
     "cookie-parser": "^1.4.7",
     "faiss-node": "^0.5.1",
     "keyv": "^5.5.3",
@@ -62,7 +62,8 @@
     "redis": "^4.6.4",
     "reflect-metadata": "^0.2.2",
     "remove-accents": "^0.5.0",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "socket.io": "^4.8.3"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",

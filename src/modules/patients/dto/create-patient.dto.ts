@@ -8,9 +8,6 @@ export enum Gender {
 
 export class CreatePatientDTO {
 
-    @IsNotEmpty({ message: 'User_id không được để trống' })   
-    user_id: string;
-
     @IsString({ message: 'Họ và tên phải là chuỗi ký tự' })
     @IsNotEmpty({ message: 'Họ và tên không được để trống' })
     full_name: string;

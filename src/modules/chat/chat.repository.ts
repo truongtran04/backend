@@ -1,68 +1,102 @@
-import { Injectable, ForbiddenException } from '@nestjs/common';
+import { Injectable, ForbiddenException, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { ConversationType, Prisma } from '@prisma/client';
+import { ConversationType } from '@prisma/client';
 
 @Injectable()
 export class ChatRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(ChatRepository.name);
+
+  constructor(private readonly prisma: PrismaService) { }
 
   /**
    * Tạo hoặc lấy một conversation giữa hai users
-   * Hỗ trợ cả patient-doctor và doctor-doctor conversations
+   * Fix: Sửa lỗi logic tìm kiếm conversation
    */
   async findOrCreateConversation(
     initiatorId: string,
     recipientId: string,
     type: ConversationType = ConversationType.patient_doctor,
   ) {
-    console.log(`[ChatRepo] findOrCreateConversation: initiator=${initiatorId}, recipient=${recipientId}`);
-    
+    this.logger.log(`Tìm kiếm hoặc tạo cuộc hội thoại: ${initiatorId} -> ${recipientId}`,);
+
     if (!initiatorId || !recipientId) {
-      throw new ForbiddenException('Invalid user IDs.');
+      throw new ForbiddenException('Lỗi không xác định người dùng.');
     }
 
     if (initiatorId === recipientId) {
-      throw new ForbiddenException('Cannot create conversation with yourself.');
+      throw new ForbiddenException(
+        'Không thể tạo cuộc hội thoại với chính mình.',
+      );
     }
 
-    // Kiểm tra cả hai users tồn tại
     const [user1, user2] = await Promise.all([
-      this.prisma.user.findUnique({ where: { user_id: initiatorId } }),
-      this.prisma.user.findUnique({ where: { user_id: recipientId } }),
+      this.prisma.user.findUnique({
+        where: { user_id: initiatorId },
+        select: { user_id: true, role: true },
+      }),
+      this.prisma.user.findUnique({
+        where: { user_id: recipientId },
+        select: { user_id: true, role: true },
+      }),
     ]);
 
     if (!user1 || !user2) {
-      console.error(`[ChatRepo] Users not found - user1: ${user1?.user_id}, user2: ${user2?.user_id}`);
-      throw new ForbiddenException('One or both users not found.');
+      this.logger.error(
+        `Không tìm thấy người dùng - initiator: ${initiatorId}, recipient: ${recipientId}`,
+      );
+      throw new ForbiddenException('Một hoặc cả hai người dùng không tồn tại.');
     }
 
-    console.log(`[ChatRepo] Users found: ${user1.user_id} (${user1.role}), ${user2.user_id} (${user2.role})`);
-
-    // Xác định conversation type dựa trên roles
     let conversationType = type;
+
     if (user1.role === 'doctor' && user2.role === 'doctor') {
       conversationType = ConversationType.doctor_doctor;
     } else {
       conversationType = ConversationType.patient_doctor;
     }
 
-    // Tìm conversation hiện tại
-    const existingRooms = await this.prisma.chatRoom.findMany({
+    const existingRoom = await this.prisma.chatRoom.findFirst({
       where: {
         type: conversationType,
-        participants: {
-          every: {
-            userId: { in: [initiatorId, recipientId] },
-          },
-        },
+        AND: [
+          { participants: { some: { userId: initiatorId } } },
+          { participants: { some: { userId: recipientId } } },
+        ],
       },
-      include: {
+      select: {
+        id: true,
+        type: true,
+        createdAt: true,
+        updatedAt: true,
+        lastMessageAt: true,
         participants: {
-          include: {
+          select: {
+            userId: true,
+            chatRoomId: true,
+            lastReadMessageId: true,
+            lastReadAt: true,
+            createdAt: true,
+            updatedAt: true,
             user: {
-              include: {
-                Doctor: true,
-                Patient: true,
+              select: {
+                user_id: true,
+                role: true,
+                Doctor: {
+                  select: {
+                    doctor_id: true,
+                    full_name: true,
+                    avatar_url: true,
+                    Specialty: {
+                      select: { name: true },
+                    },
+                  },
+                },
+                Patient: {
+                  select: {
+                    patient_id: true,
+                    full_name: true,
+                  },
+                },
               },
             },
           },
@@ -70,45 +104,63 @@ export class ChatRepository {
       },
     });
 
-    // Lọc room chỉ có 2 participants và có cả 2 users
-    const privateRoom = existingRooms.find(
-      (room) =>
-        room.participants.length === 2 &&
-        room.participants.some((p) => p.userId === initiatorId) &&
-        room.participants.some((p) => p.userId === recipientId),
-    );
-
-    if (privateRoom) {
-      console.log(`[ChatRepo] Found existing room: ${privateRoom.id}`);
-      return privateRoom;
+    if (existingRoom && existingRoom.participants.length === 2) {
+      this.logger.log(`Đã tìm thấy phòng: ${existingRoom.id}`);
+      return existingRoom;
     }
 
-    // Tạo conversation mới
-    console.log(`[ChatRepo] Creating new room with participants: ${initiatorId}, ${recipientId}`);
+    this.logger.log(`Đang tạo phòng mới: ${initiatorId}, ${recipientId}`);
+
     const newRoom = await this.prisma.chatRoom.create({
       data: {
         type: conversationType,
+        lastMessageAt: new Date(),
         participants: {
           create: [{ userId: initiatorId }, { userId: recipientId }],
         },
       },
-      include: {
+      select: {
+        id: true,
+        type: true,
+        createdAt: true,
+        updatedAt: true,
+        lastMessageAt: true,
         participants: {
-          include: {
+          select: {
+            userId: true,
+            chatRoomId: true,
+            lastReadMessageId: true,
+            lastReadAt: true,
+            createdAt: true,
+            updatedAt: true,
             user: {
-              include: {
-                Doctor: true,
-                Patient: true,
+              select: {
+                user_id: true,
+                role: true,
+                Doctor: {
+                  select: {
+                    doctor_id: true,
+                    full_name: true,
+                    avatar_url: true,
+                    Specialty: {
+                      select: { name: true },
+                    },
+                  },
+                },
+                Patient: {
+                  select: {
+                    patient_id: true,
+                    full_name: true,
+                  },
+                },
               },
             },
           },
         },
       },
     });
-    
-    console.log(`[ChatRepo] Created new room: ${newRoom.id} with ${newRoom.participants.length} participants`);
-    console.log(`[ChatRepo] Participants: ${newRoom.participants.map(p => p.userId).join(', ')}`);
 
+    this.logger.log(`Đã tạo phòng mới: ${newRoom.id}`);
     return newRoom;
   }
 
@@ -126,14 +178,12 @@ export class ChatRepository {
             user: {
               select: {
                 user_id: true,
-                email: true,
                 role: true,
                 Doctor: {
                   select: {
                     doctor_id: true,
                     full_name: true,
                     avatar_url: true,
-                    title: true,
                     Specialty: { select: { name: true } },
                   },
                 },
@@ -148,6 +198,7 @@ export class ChatRepository {
           },
         },
         messages: {
+          where: { isDeleted: false }, // Chỉ lấy tin nhắn chưa xóa
           take: 1,
           orderBy: { createdAt: 'desc' },
           select: {
@@ -156,6 +207,7 @@ export class ChatRepository {
             createdAt: true,
             senderId: true,
             isDeleted: true,
+            isEdited: true,
           },
         },
       },
@@ -168,117 +220,7 @@ export class ChatRepository {
   }
 
   /**
-   * Lấy conversations theo type (patient_doctor hoặc doctor_doctor)
-   */
-  async getConversationsByType(
-    userId: string,
-    type: ConversationType,
-    limit = 50,
-    offset = 0,
-  ) {
-    return await this.prisma.chatRoom.findMany({
-      where: {
-        type,
-        participants: { some: { userId } },
-      },
-      include: {
-        participants: {
-          include: {
-            user: {
-              select: {
-                user_id: true,
-                email: true,
-                role: true,
-                Doctor: {
-                  select: {
-                    full_name: true,
-                    avatar_url: true,
-                    title: true,
-                  },
-                },
-                Patient: {
-                  select: {
-                    full_name: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-        messages: {
-          take: 1,
-          orderBy: { createdAt: 'desc' },
-          select: {
-            id: true,
-            content: true,
-            createdAt: true,
-          },
-        },
-      },
-      orderBy: { lastMessageAt: 'desc' },
-      take: limit,
-      skip: offset,
-    });
-  }
-
-  /**
-   * Tìm kiếm conversations dựa trên tên bác sĩ/bệnh nhân
-   */
-  async searchConversations(userId: string, query: string, limit = 10) {
-    const conversations = await this.prisma.chatRoom.findMany({
-      where: {
-        AND: [
-          { participants: { some: { userId } } },
-          {
-            participants: {
-              some: {
-                user: {
-                  OR: [
-                    { Doctor: { full_name: { contains: query, mode: 'insensitive' } } },
-                    { Patient: { full_name: { contains: query, mode: 'insensitive' } } },
-                  ],
-                },
-              },
-            },
-          },
-        ],
-      },
-      include: {
-        participants: {
-          include: {
-            user: {
-              select: {
-                user_id: true,
-                role: true,
-                Doctor: {
-                  select: {
-                    full_name: true,
-                    avatar_url: true,
-                    title: true,
-                  },
-                },
-                Patient: {
-                  select: {
-                    full_name: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-        messages: {
-          take: 1,
-          orderBy: { createdAt: 'desc' },
-        },
-      },
-      take: limit,
-    });
-
-    return conversations;
-  }
-
-  /**
-   * Lấy lịch sử tin nhắn của một conversation
+   * Lấy messages với pagination
    */
   async getConversationMessages(
     userId: string,
@@ -286,8 +228,10 @@ export class ChatRepository {
     page = 1,
     pageSize = 20,
   ) {
-    console.log(`[ChatRepo] getConversationMessages: userId=${userId}, roomId=${chatRoomId}, page=${page}`);
-    
+    this.logger.log(
+      `getConversationMessages: ${userId}, ${chatRoomId}, page=${page}`,
+    );
+
     // Kiểm tra user có quyền truy cập
     const isParticipant = await this.prisma.chatParticipant.findUnique({
       where: {
@@ -299,70 +243,64 @@ export class ChatRepository {
     });
 
     if (!isParticipant) {
-      // Log debugging information
-      console.error(`[ChatRepo] ❌ Access Denied - User: ${userId}, Room: ${chatRoomId}`);
-      
-      // Check all participants in this room
-      const allParticipants = await this.prisma.chatParticipant.findMany({
-        where: { chatRoomId },
-        select: { userId: true },
-      });
-      console.error(`[ChatRepo] Room participants:`, allParticipants.map(p => p.userId).join(', '));
-      
-      // Also check if the room exists
-      const room = await this.prisma.chatRoom.findUnique({
-        where: { id: chatRoomId },
-        select: { id: true, type: true, createdAt: true },
-      });
-      console.error(`[ChatRepo] Room info: ${room ? `exists, type=${room.type}, created=${room.createdAt}` : 'DOES NOT EXIST'}`);
-      
-      throw new ForbiddenException('You do not have access to this conversation.');
+      this.logger.error(`Access Denied - User: ${userId}, Room: ${chatRoomId}`);
+      throw new ForbiddenException(
+        'You do not have access to this conversation.',
+      );
     }
-    
-    console.log(`[ChatRepo] ✅ User ${userId} is participant of room ${chatRoomId}`);
 
     const skip = (page - 1) * pageSize;
 
-    const messages = await this.prisma.chatMessage.findMany({
-      where: {
-        chatRoomId,
-        isDeleted: false,
-      },
-      include: {
-        sender: {
-          select: {
-            user_id: true,
-            role: true,
-            Doctor: {
-              select: {
-                full_name: true,
-                avatar_url: true,
+    const [messages, total] = await Promise.all([
+      this.prisma.chatMessage.findMany({
+        where: {
+          chatRoomId,
+          isDeleted: false,
+        },
+        include: {
+          sender: {
+            select: {
+              user_id: true,
+              role: true,
+              Doctor: {
+                select: {
+                  full_name: true,
+                  avatar_url: true,
+                },
               },
-            },
-            Patient: {
-              select: {
-                full_name: true,
+              Patient: {
+                select: {
+                  full_name: true,
+                },
               },
             },
           },
         },
-      },
-      orderBy: { createdAt: 'asc' },
-      skip,
-      take: pageSize,
-    });
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: pageSize,
+      }),
+      this.prisma.chatMessage.count({
+        where: {
+          chatRoomId,
+          isDeleted: false,
+        },
+      }),
+    ]);
 
-    return messages;
+    return {
+      messages: messages.reverse(), // Đảo ngược để tin nhắn cũ ở trên
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    };
   }
 
   /**
    * Tạo tin nhắn mới
    */
-  async createMessage(
-    senderId: string,
-    chatRoomId: string,
-    content: string,
-  ) {
+  async createMessage(senderId: string, chatRoomId: string, content: string) {
     // Kiểm tra sender có phải là participant
     const isParticipant = await this.prisma.chatParticipant.findUnique({
       where: {
@@ -374,18 +312,144 @@ export class ChatRepository {
     });
 
     if (!isParticipant) {
-      throw new ForbiddenException('You are not a member of this conversation.');
+      throw new BadRequestException('Bạn không phải là thành viên của cuộc trò chuyện này.');
     }
 
     if (!content || content.trim().length === 0) {
-      throw new ForbiddenException('Message content cannot be empty.');
+      throw new BadRequestException('Nội dung tin nhắn không được để trống.');
     }
 
-    const message = await this.prisma.chatMessage.create({
-      data: {
-        senderId,
+    const now = new Date();
+
+    // Tạo tin nhắn và cập nhật chatRoom trong một transaction
+    const [message, _] = await this.prisma.$transaction([
+      this.prisma.chatMessage.create({
+        data: {
+          senderId,
+          chatRoomId,
+          content: content.trim(),
+        },
+        include: {
+          sender: {
+            select: {
+              user_id: true,
+              role: true,
+              Doctor: {
+                select: {
+                  full_name: true,
+                  avatar_url: true,
+                },
+              },
+              Patient: {
+                select: {
+                  full_name: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+      // Cập nhật lastMessageAt
+      this.prisma.chatRoom.update({
+        where: { id: chatRoomId },
+        data: { lastMessageAt: now },
+      }),
+    ]);
+
+    return message;
+  }
+
+  /**
+   * Đánh dấu tin nhắn đã đọc
+   */
+  async markAsRead(userId: string, chatRoomId: string) {
+    const lastReadAt = new Date();
+
+    // Lấy tin nhắn mới nhất trong room
+    const latestMessage = await this.prisma.chatMessage.findFirst({
+      where: {
         chatRoomId,
-        content: content.trim(),
+        isDeleted: false
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+
+    const participant = await this.prisma.chatParticipant.update({
+      where: {
+        userId_chatRoomId: {
+          userId,
+          chatRoomId,
+        },
+      },
+      data: {
+        lastReadAt,
+        lastReadMessageId: latestMessage?.id, // Cập nhật ID tin nhắn mới nhất
+      },
+    });
+
+    return participant;
+  }
+
+  /**
+   * Xóa tin nhắn (soft delete)
+   */
+  async deleteMessage(userId: string, messageId: string) {
+    const message = await this.prisma.chatMessage.findUnique({
+      where: { id: messageId },
+    });
+
+    if (!message) {
+      throw new ForbiddenException('Tin nhắn không tồn tại.');
+    }
+
+    if (message.senderId !== userId) {
+      throw new ForbiddenException('Bạn chỉ có thể xóa tin nhắn của mình.');
+    }
+
+    if (message.isDeleted) {
+      throw new BadRequestException('Tin nhắn đã bị xóa trước đó.');
+    }
+
+    return await this.prisma.chatMessage.update({
+      where: { id: messageId },
+      data: {
+        isDeleted: true,
+        updatedAt: new Date(),
+      },
+    });
+  }
+
+  /**
+   * Chỉnh sửa tin nhắn
+   */
+  async editMessage(userId: string, messageId: string, newContent: string) {
+    const message = await this.prisma.chatMessage.findUnique({
+      where: { id: messageId },
+    });
+
+    if (!message) {
+      throw new ForbiddenException('Tin nhắn không tồn tại.');
+    }
+
+    if (message.senderId !== userId) {
+      throw new ForbiddenException('Bạn chỉ có thể sửa tin nhắn của mình.');
+    }
+
+    if (message.isDeleted) {
+      throw new BadRequestException('Không thể sửa tin nhắn đã bị xóa.');
+    }
+
+    if (!newContent || newContent.trim().length === 0) {
+      throw new BadRequestException('Nội dung tin nhắn không được để trống.');
+    }
+
+    return await this.prisma.chatMessage.update({
+      where: { id: messageId },
+      data: {
+        content: newContent.trim(),
+        isEdited: true,
+        updatedAt: new Date(),
       },
       include: {
         sender: {
@@ -407,206 +471,10 @@ export class ChatRepository {
         },
       },
     });
-
-    // Cập nhật lastMessageAt của chatRoom
-    await this.prisma.chatRoom.update({
-      where: { id: chatRoomId },
-      data: { lastMessageAt: new Date() },
-    });
-
-    return message;
   }
 
   /**
-   * Đánh dấu tin nhắn đã được đọc
-   */
-  async markAsRead(userId: string, chatRoomId: string, messageId?: string) {
-    const lastReadAt = new Date();
-
-    const participant = await this.prisma.chatParticipant.update({
-      where: {
-        userId_chatRoomId: {
-          userId,
-          chatRoomId,
-        },
-      },
-      data: {
-        lastReadAt,
-        lastReadMessageId: messageId,
-      },
-    });
-
-    return participant;
-  }
-
-  /**
-   * Xóa tin nhắn (soft delete)
-   */
-  async deleteMessage(userId: string, messageId: string) {
-    // Kiểm tra xem user có phải là sender không
-    const message = await this.prisma.chatMessage.findUnique({
-      where: { id: messageId },
-    });
-
-    if (!message || message.senderId !== userId) {
-      throw new ForbiddenException('You can only delete your own messages.');
-    }
-
-    return await this.prisma.chatMessage.update({
-      where: { id: messageId },
-      data: { isDeleted: true },
-    });
-  }
-
-  /**
-   * Chỉnh sửa tin nhắn
-   */
-  async editMessage(userId: string, messageId: string, newContent: string) {
-    // Kiểm tra xem user có phải là sender không
-    const message = await this.prisma.chatMessage.findUnique({
-      where: { id: messageId },
-    });
-
-    if (!message || message.senderId !== userId) {
-      throw new ForbiddenException('You can only edit your own messages.');
-    }
-
-    return await this.prisma.chatMessage.update({
-      where: { id: messageId },
-      data: {
-        content: newContent.trim(),
-        isEdited: true,
-        updatedAt: new Date(),
-      },
-    });
-  }
-
-  /**
-   * Lấy thông tin một conversation
-   */
-  async getConversationDetails(userId: string, chatRoomId: string) {
-    const conversation = await this.prisma.chatRoom.findFirst({
-      where: {
-        id: chatRoomId,
-        participants: { some: { userId } },
-      },
-      include: {
-        participants: {
-          include: {
-            user: {
-              select: {
-                user_id: true,
-                email: true,
-                role: true,
-                Doctor: {
-                  select: {
-                    full_name: true,
-                    avatar_url: true,
-                    title: true,
-                  },
-                },
-                Patient: {
-                  select: {
-                    full_name: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    });
-
-    if (!conversation) {
-      throw new ForbiddenException('Conversation not found or access denied.');
-    }
-
-    return conversation;
-  }
-
-  /**
-   * Lấy danh sách có thể chat (doctors cho patients, hoặc doctors cho doctors)
-   */
-  async getAvailableChatRecipients(userId: string) {
-    // Lấy thông tin user hiện tại
-    const currentUser = await this.prisma.user.findUnique({
-      where: { user_id: userId },
-      include: {
-        Doctor: true,
-        Patient: true,
-      },
-    });
-
-    if (!currentUser) {
-      throw new ForbiddenException('User not found.');
-    }
-
-    let recipients;
-
-    if (currentUser.role === 'patient') {
-      // Bệnh nhân có thể chat với bác sĩ
-      recipients = await this.prisma.user.findMany({
-        where: {
-          role: 'doctor',
-          Doctor: {
-            is_available: true,
-          },
-        },
-        include: {
-          Doctor: {
-            include: {
-              Specialty: true,
-            },
-          },
-        },
-        orderBy: {
-          Doctor: {
-            full_name: 'asc',
-          },
-        },
-      });
-    } else if (currentUser.role === 'doctor') {
-      // Bác sĩ có thể chat với bệnh nhân hoặc bác sĩ khác
-      recipients = await this.prisma.user.findMany({
-        where: {
-          OR: [
-            { role: 'patient' },
-            {
-              AND: [
-                { role: 'doctor' },
-                { user_id: { not: userId } },
-              ],
-            },
-          ],
-        },
-        include: {
-          Doctor: {
-            include: {
-              Specialty: true,
-            },
-          },
-          Patient: true,
-        },
-        orderBy: [
-          {
-            Doctor: {
-              full_name: 'asc',
-            },
-          },
-          {
-            Patient: {
-              full_name: 'asc',
-            },
-          },
-        ],
-      });
-    }
-
-    return recipients || [];
-  }
-
-  /**
-   * Lấy unread message count
+   * Lấy unread count
    */
   async getUnreadCount(userId: string, chatRoomId: string) {
     const participant = await this.prisma.chatParticipant.findUnique({
@@ -628,10 +496,19 @@ export class ChatRepository {
         createdAt: {
           gt: participant.lastReadAt || new Date(0),
         },
+        senderId: { not: userId }, // Không đếm tin nhắn của chính mình
         isDeleted: false,
       },
     });
 
     return unreadCount;
+  }
+
+  async isParticipant(userId: string, chatRoomId: string) {
+    return await this.prisma.chatParticipant.findUnique({
+      where: {
+        userId_chatRoomId: { userId, chatRoomId },
+      },
+    });
   }
 }

@@ -15,6 +15,8 @@ import { StatusMessage, AppointmentStatus } from "./appointment.interface";
 import { SpecificationBuilder } from "src/classes/specification-builder.class";
 import { RELATIONS } from 'src/common/constants/relations.constant';
 import { Patient } from '@prisma/client';
+import { log } from "console";
+import { APPOINTMENT_TRANSITIONS } from "./appointment.constants";
 
 @Injectable()
 export class AppointmentService extends BaseService<AppointmentRepository, Appointment> {
@@ -28,7 +30,7 @@ export class AppointmentService extends BaseService<AppointmentRepository, Appoi
         private readonly doctorService: DoctorService,
         private readonly patientService: PatientService,
         private readonly scheduleService: ScheduleService,
-    ){
+    ) {
         super(
             appointmentRepository,
             prismaService,
@@ -45,22 +47,22 @@ export class AppointmentService extends BaseService<AppointmentRepository, Appoi
         )
     }
 
-    protected async beforeSave(id?: string, payload?: CreateAppointmentDTO | UpdateAppointmentDTO): Promise<this>{
-        if(!payload){
+    protected async beforeSave(id?: string, payload?: CreateAppointmentDTO | UpdateAppointmentDTO): Promise<this> {
+        if (!payload) {
             throw new BadRequestException('Dữ liệu không hợp lệ')
         }
         await this.validateService.model('appointment')
             .context({ primaryKey: 'appointment_id', id })
             .validate()
-    
+
         return Promise.resolve(this)
     }
 
-    private async getPatientId(payload: IAuthUser): Promise<string>{
+    private async getPatientId(payload: IAuthUser): Promise<string> {
         // Lấy thông tin bệnh nhân trực tiếp từ user_id trong payload.
         // Giả định patientService có phương thức findByField hoặc tương tự.
         const patient = await this.patientService.findFirst({ user_id: payload.userId });
-        
+
         // Nếu không tìm thấy hồ sơ bệnh nhân nào được liên kết với tài khoản người dùng này,
         // đưa ra một lỗi rõ ràng.
         if (!patient) {
@@ -71,26 +73,24 @@ export class AppointmentService extends BaseService<AppointmentRepository, Appoi
     }
 
     async createAppointment(payload: IAuthUser, request: CreateAppointmentDTO): Promise<Appointment> {
-        
-        const patientId = await this.getPatientId(payload)
-        console.log(patientId);
-        
 
+        const patientId = await this.getPatientId(payload)
+        
         const existing = await this.findByField('schedule_id', request.schedule_id)
 
-        if(existing) {
+        if (existing) {
             throw new BadRequestException("Lịch khám đã tồn tại")
         }
 
         const doctor = await this.doctorService.findById(request.doctor_id)
 
-        if(!doctor || doctor.is_available === false) {
+        if (!doctor || doctor.is_available === false) {
             throw new BadRequestException("Không tìm bác sĩ")
         }
 
         const schedule = await this.scheduleService.findById(request.schedule_id)
 
-        if(!schedule|| schedule.is_available === false) {
+        if (!schedule || schedule.is_available === false) {
             throw new BadRequestException("Không tìm thấy lịch của bác sĩ")
         }
 
@@ -114,40 +114,45 @@ export class AppointmentService extends BaseService<AppointmentRepository, Appoi
         return createdAppointmentWithRelations;
     }
 
-    private async checkValidateAppointment(id: string, payload: IAuthUser): Promise<Appointment> {
-        const doctor = await this.doctorService.findById(payload.userId);
-        if (!doctor){
+    private async checkValidateAppointment(id: string, payload: IAuthUser, nextStatus: AppointmentStatus): Promise<Appointment> {
+        const doctor = await this.doctorService.findByField('user_id', payload.userId);
+        if (!doctor) {
             throw new BadRequestException("Không tìm thấy bác sĩ");
-        } 
+        }
 
         const appointment = await this.findById(id);
-        if (!appointment){
+        if (!appointment) {
             throw new BadRequestException("Không tìm thấy cuộc hẹn");
-        } 
+        }
 
-        // Lấy schedule của appointment
         const schedule = await this.scheduleService.findById(appointment.schedule_id);
-        
+
         if (!schedule || schedule.doctor_id !== doctor.doctor_id) {
             throw new BadRequestException("Bác sĩ không có lịch khám cho cuộc hẹn này");
         }
 
-        if (appointment.status !== 'pending') {
-            throw new BadRequestException(`Cuộc hẹn đã ${appointment.status}`);
+        const allowedNextStatuses =
+            APPOINTMENT_TRANSITIONS[appointment.status as AppointmentStatus];
+
+        if (!allowedNextStatuses.includes(nextStatus)) {
+            throw new BadRequestException(
+                `Không thể chuyển cuộc hẹn từ ${appointment.status} sang ${nextStatus}`
+            );
         }
+
 
         return appointment
     }
 
-    async updateAppointmentStatus(id: string, payload: IAuthUser, statusMessage: StatusMessage ): Promise<{message: string}> {
+    async updateAppointmentStatus(id: string, payload: IAuthUser, statusMessage: StatusMessage): Promise<{ message: string }> {
 
-        const appointment = await this.checkValidateAppointment(id, payload)
+        const appointment = await this.checkValidateAppointment(id, payload, statusMessage.status)
 
         await this.save({ status: statusMessage.status }, appointment.appointment_id);
 
-        if(statusMessage.status === AppointmentStatus.CANCEL) {
+        if (statusMessage.status === AppointmentStatus.CANCEL) {
 
-             const isAvailable = {
+            const isAvailable = {
                 is_available: true
             }
 
@@ -160,12 +165,12 @@ export class AppointmentService extends BaseService<AppointmentRepository, Appoi
     async getAppointmentBySchedule(id: string): Promise<Appointment> {
         const appointment = await this.findByField('schedule_id', id)
 
-        if(!appointment) {
+        if (!appointment) {
             throw new BadRequestException('Không có lịch khám này')
         }
 
         const data = await this.show(appointment.appointment_id, RELATIONS.APPOINTMENT)
-        
+
         return data
     }
 

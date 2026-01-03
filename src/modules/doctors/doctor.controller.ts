@@ -122,9 +122,17 @@ export class DoctorController extends BaseController<Doctor, 'doctor_id', Doctor
         )
     }
 
-    @GuardType(GUARD)
-    @UseGuards(JwtAuthGuard, ActiveUserGuard, RolesGuard)
-    @Roles('admin', 'doctor', 'patient')
+    @Get('/count')
+    @HttpCode(HttpStatus.OK)
+    async countDoctors(): Promise<TApiReponse<number>> {
+        const count = await this.doctorService.countDoctors();
+        return ApiResponse.suscess(
+            count,
+            'Success',
+            HttpStatus.OK
+        );
+    }
+
     @Get(':id/schedules')
     @HttpCode(HttpStatus.OK)
     async getSchedulesByDoctor(
@@ -162,23 +170,17 @@ export class DoctorController extends BaseController<Doctor, 'doctor_id', Doctor
         )
     }
 
-    // ⚠️ The GET / route must be the last one to avoid conflicts with /:id
     @Get()
     @HttpCode(HttpStatus.OK)
-    async paginate(
+    async showAll(
         @Query() query: Record<string, any>,
-        @Req() req
-    ): Promise<TApiReponse<TModelOrPaginate<DoctorDTO>>> {
-        const data: Doctor[] | IPaginateResult<Doctor> = await this.doctorService.paginate(query, RELATIONS.DOCTOR)
-
-        const dataTransform: TModelOrPaginate<DoctorDTO> = Array.isArray(data)
-            ? this.transformer.transformArray(data, DoctorDTO)
-            : this.transformer.transformPaginated(data, DoctorDTO)
-
+    ): Promise<TApiReponse<DoctorDTO[]>> {
+        const data: Doctor[] = await this.doctorService.showAll(query, RELATIONS.DOCTOR)
         return ApiResponse.suscess(
-            dataTransform,
+            this.transformer.transformArray(data, DoctorDTO),
             'Success',
             HttpStatus.OK
         )
     }
+
 }

@@ -39,3 +39,31 @@ export const ToLocalISOString = () => {
         return localDate.toISOString();
     };
 };
+
+/**
+ * Transform string date (YYYY-MM-DD) to Date object for Prisma
+ */
+export const ToDate = () => {
+    return ({ value }: TransformFnParams) => {
+        if (!value) return null;
+        // If it's already a Date object, return it
+        if (value instanceof Date) return value;
+        // If it's a string in YYYY-MM-DD format, convert to Date
+        if (typeof value === 'string') {
+            // Check if it's YYYY-MM-DD format (10 characters)
+            if (value.length === 10 && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+                // Parse as UTC date to avoid timezone issues
+                // YYYY-MM-DD format is parsed as UTC by JavaScript
+                return new Date(value + 'T00:00:00.000Z');
+            }
+            // Otherwise, try to parse it as-is
+            const date = new Date(value);
+            // Check if date is valid
+            if (isNaN(date.getTime())) {
+                throw new Error(`Invalid date format: ${value}`);
+            }
+            return date;
+        }
+        return new Date(value as number | Date);
+    };
+};

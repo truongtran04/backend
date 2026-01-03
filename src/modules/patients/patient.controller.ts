@@ -85,17 +85,10 @@ export class PatientController extends BaseController<Patient, 'patient_id', Pat
     async updatePatch(
         @Body(new ValidationPipe()) updateRequest: UpdatePatchPatientDTO,
         @Param('id') id: string,
-        @Req() req: express.Request
     ): Promise<TApiReponse<PatientDTO>> {
-        // Security Check: Nếu người dùng là 'patient', đảm bảo họ chỉ cập nhật hồ sơ của chính mình.
-        if (req.user && req.user.role === 'patient') {
-            const patientProfile = await this.patientService.findFirst({ user_id: req.user.userId });
-            if (!patientProfile || patientProfile.patient_id !== id) {
-                throw new ForbiddenException('Bạn không có quyền cập nhật hồ sơ này.');
-            }
-        }
-
-        const data: TResult<Patient> = await this.patientService.save(updateRequest, id)
+        
+        const data: TResult<Patient> = await this.patientService.update(updateRequest, id)
+        
         return ApiResponse.suscess(
             this.transformer.transformSingle(data, PatientDTO),
             'Success',

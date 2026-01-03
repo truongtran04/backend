@@ -1,3 +1,4 @@
+import { PartialType } from "@nestjs/mapped-types";
 import { IsNotEmpty, IsString, IsEnum, IsDateString, Matches, MinLength, IsOptional } from "class-validator";
 
 export enum Gender {
@@ -8,22 +9,23 @@ export enum Gender {
 
 export class UpdatePatientDTO {
   
-  @IsNotEmpty({ message: 'User_id không được để trống' })   
-  user_id: string;
-  
   @IsString({ message: 'Họ và tên phải là chuỗi ký tự' })
   @IsNotEmpty({ message: 'Họ và tên không được để trống' })
   full_name: string;
 
-  @IsString({ message: 'CMND/CCCD phải là chuỗi ký tự' })
-  @IsNotEmpty({ message: 'CMND/CCCD không được để trống' })
-  @MinLength(10, { message: 'CMND/CCCD phải từ 9 đến 12 ký tự' })
-  identity_number: string;
+  @IsString({ message: 'Email phải là chuỗi ký tự' })
+  @IsNotEmpty({ message: 'Email không được để trống' })
+  email: string;
 
   @IsString({ message: 'Số điện thoại phải là chuỗi ký tự' })
   @IsNotEmpty({ message: 'Số điện thoại không được để trống' })
   @Matches(/^(0|\+84)\d{9}$/, { message: 'Số điện thoại không hợp lệ' })
   phone_number: string;
+
+  @IsString({ message: 'CMND/CCCD phải là chuỗi ký tự' })
+  @IsNotEmpty({ message: 'CMND/CCCD không được để trống' })
+  @MinLength(10, { message: 'CMND/CCCD phải từ 9 đến 12 ký tự' })
+  identity_number: string;
 
   @IsDateString({}, { message: 'Ngày sinh phải đúng định dạng (YYYY-MM-DD)' })
   @IsNotEmpty({ message: 'Ngày sinh không được để trống' })
@@ -54,60 +56,5 @@ export class UpdatePatientDTO {
 }
 
 
-export class UpdatePatchPatientDTO {
-  
-  @IsOptional()
-  @IsNotEmpty({ message: 'User_id không được để trống' })   
-  user_id?: string;
-  
-  @IsOptional()
-  @IsString({ message: 'Họ và tên phải là chuỗi ký tự' })
-  @IsNotEmpty({ message: 'Họ và tên không được để trống' })
-  full_name?: string;
+export class UpdatePatchPatientDTO extends PartialType(UpdatePatientDTO) {}
 
-  @IsOptional()
-  @IsString({ message: 'CMND/CCCD phải là chuỗi ký tự' })
-  @IsNotEmpty({ message: 'CMND/CCCD không được để trống' })
-  @MinLength(10, { message: 'CMND/CCCD phải từ 9 đến 12 ký tự' })
-  identity_number?: string;
-
-  @IsOptional()
-  @IsString({ message: 'Số điện thoại phải là chuỗi ký tự' })
-  @IsNotEmpty({ message: 'Số điện thoại không được để trống' })
-  @Matches(/^(0|\+84)\d{9}$/, { message: 'Số điện thoại không hợp lệ' })
-  phone_number?: string;
-
-  @IsOptional()
-  @IsDateString({}, { message: 'Ngày sinh phải đúng định dạng (YYYY-MM-DD)' })
-  @IsNotEmpty({ message: 'Ngày sinh không được để trống' })
-  date_of_birth?: Date;
-
-  @IsOptional()
-  @IsEnum(Gender, { message: 'Giới tính không hợp lệ' })
-  @IsNotEmpty({ message: 'Giới tính không được để trống' })
-  gender?: Gender;
-
-  @IsOptional()
-  @IsString({ message: 'Địa chỉ phải là chuỗi ký tự' })
-  @IsNotEmpty({ message: 'Địa chỉ không được để trống' })
-  address?: string;
-
-  @IsOptional()
-  @IsString({ message: 'Dân tộc phải là chuỗi ký tự' })
-  @IsNotEmpty({ message: 'Dân tộc không được để trống' })
-  ethnicity?: string;
-
-  @IsOptional()
-  @IsString({ message: 'Số thẻ BHYT phải là chuỗi ký tự' })
-  @IsNotEmpty({ message: 'Số thẻ BHYT không được để trống' })
-  @MinLength(10, { message: 'Số thẻ BHYT phải từ 10 đến 15 ký tự' })
-  health_insurance_number?: string;
-
-  @IsOptional()
-  @IsString({ message: 'Mã giới thiệu phải là chuỗi ký tự' })
-  referral_code?: string;
-
-  @IsOptional()
-  @IsString({ message: 'Nghề nghiệp phải là chuỗi ký tự' })
-  occupation?: string;
-}

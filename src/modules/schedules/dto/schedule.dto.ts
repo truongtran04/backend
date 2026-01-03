@@ -5,6 +5,10 @@ import { ToLocalDate, ToLocalTime, ToLocalISOString } from "src/utils/date-trans
 export class ScheduleDTO {
     @Expose({ name: 'schedule_id' })
     id: string;
+
+    @Expose({ name: 'doctor_id' })
+    @Transform(({ obj }) => obj.Doctor.doctor_id ?? null)
+    doctor_id: string;
     
     @Expose()
     @Transform(({ obj }) => obj.Doctor.full_name ?? null)

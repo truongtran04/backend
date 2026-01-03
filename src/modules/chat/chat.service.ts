@@ -1,188 +1,113 @@
-// src/chat/chat.service.ts
-import { ForbiddenException, Injectable } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
+import { Injectable, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
 import { ChatRepository } from './chat.repository';
-import { ConversationType, Prisma } from '@prisma/client';
+import { CreateChatRoomDto, SendMessageDto, UpdateMessageDto } from './dto';
+import { ConversationType } from '@prisma/client';
 
-
-// -------------------------
-// 1️⃣ Định nghĩa kiểu trả về cho messages và rooms
-// -------------------------
-const chatMessageWithSender = Prisma.validator<Prisma.ChatMessageDefaultArgs>()({
-  include: {
-    sender: {
-      select: {
-        user_id: true,
-        role: true,
-        Doctor: { select: { full_name: true, avatar_url: true } },
-        Patient: { select: { full_name: true } },
-      },
-    },
-  },
-});
-
-const chatRoomWithDetails = Prisma.validator<Prisma.ChatRoomDefaultArgs>()({
-  include: {
-    participants: {
-      include: {
-        user: {
-          select: {
-            user_id: true,
-            email: true,
-            role: true,
-            Doctor: {
-              select: {
-                full_name: true,
-                avatar_url: true,
-              }
-            },
-            Patient: {
-              select: {
-                full_name: true,
-              }
-            },
-          },
-        },
-      },
-    },
-    messages: { orderBy: { createdAt: 'desc' }, take: 1 },
-  },
-});
-
-export type ChatMessageWithSender = Prisma.ChatMessageGetPayload<typeof chatMessageWithSender>;
-export type ChatRoomWithDetails = Prisma.ChatRoomGetPayload<typeof chatRoomWithDetails>;
-
-// -------------------------
-// 2️⃣ Service
-// -------------------------
 @Injectable()
 export class ChatService {
+  private readonly logger = new Logger(ChatService.name);
+
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly chatRepository: ChatRepository
-  ) {}
+    private readonly chatRepository: ChatRepository,
+  ) { }
 
   /**
-   * Tìm hoặc tạo phòng chat
+   * Tạo hoặc lấy conversation
    */
-  async findOrCreateChatRoom(
-    initiatorId: string,
-    recipientId: string,
-    type?: ConversationType
-  ) {
+  async findOrCreateConversation(initiatorId: string, recipientId: string, type: ConversationType = ConversationType.patient_doctor) {
     return await this.chatRepository.findOrCreateConversation(
       initiatorId,
       recipientId,
-      type
+      type,
     );
   }
 
   /**
-   * Lấy tất cả phòng chat của user
+   * Lấy danh sách conversations
    */
-  async getUserChatRooms(userId: string, limit = 50, offset = 0) {
-    return await this.chatRepository.getUserConversations(userId, limit, offset);
+  async getUserConversations(userId: string, limit = 50, offset = 0) {
+    const conversations = await this.chatRepository.getUserConversations(
+      userId,
+      limit,
+      offset,
+    );
+
+    // Tính unread count cho mỗi conversation
+    const conversationsWithUnread = await Promise.all(
+      conversations.map(async (conv) => {
+        const unreadCount = await this.chatRepository.getUnreadCount(
+          userId,
+          conv.id,
+        );
+        return {
+          ...conv,
+          unreadCount,
+          lastMessage: conv.messages[0] || null,
+        };
+      }),
+    );
+
+    return conversationsWithUnread;
   }
 
   /**
-   * Lấy phòng chat theo type
+   * Lấy messages
    */
-  async getConversationsByType(
-    userId: string,
-    type: ConversationType,
-    limit = 50,
-    offset = 0
-  ) {
-    return await this.chatRepository.getConversationsByType(userId, type, limit, offset);
-  }
-
-  /**
-   * Tìm kiếm conversations
-   */
-  async searchConversations(userId: string, query: string, limit = 10) {
-    return await this.chatRepository.searchConversations(userId, query, limit);
-  }
-
-  /**
-   * Lấy lịch sử tin nhắn
-   */
-  async getChatMessages(
-    userId: string,
+  async getMessages(
     chatRoomId: string,
+    userId: string,
     page = 1,
-    pageSize = 20
+    pageSize = 20,
   ) {
-    return await this.chatRepository.getConversationMessages(userId, chatRoomId, page, pageSize);
+    return await this.chatRepository.getConversationMessages(
+      userId,
+      chatRoomId,
+      page,
+      pageSize,
+    );
   }
 
   /**
-   * Tạo tin nhắn mới
+   * Gửi message
    */
-  async createMessage(
-    senderId: string,
-    chatRoomId: string,
-    content: string
-  ): Promise<ChatMessageWithSender> {
-    return await this.chatRepository.createMessage(senderId, chatRoomId, content);
+  async sendMessage(dto: SendMessageDto, userId: string) {
+    return await this.chatRepository.createMessage(
+      userId,
+      dto.chatRoomId,
+      dto.content,
+    );
   }
 
   /**
-   * Đánh dấu tin nhắn đã đọc
+   * Sửa message
    */
-  async markAsRead(userId: string, chatRoomId: string, messageId?: string) {
-    return await this.chatRepository.markAsRead(userId, chatRoomId, messageId);
-  }
-
-  /**
-   * Xóa tin nhắn
-   */
-  async deleteMessage(userId: string, messageId: string) {
-    return await this.chatRepository.deleteMessage(userId, messageId);
-  }
-
-  /**
-   * Chỉnh sửa tin nhắn
-   */
-  async editMessage(userId: string, messageId: string, newContent: string) {
-    return await this.chatRepository.editMessage(userId, messageId, newContent);
-  }
-
-  /**
-   * Lấy thông tin conversation
-   */
-  async getConversationDetails(userId: string, chatRoomId: string) {
-    return await this.chatRepository.getConversationDetails(userId, chatRoomId);
-  }
-
-  /**
-   * Lấy danh sách có thể chat
-   */
-  async getAvailableChatRecipients(userId: string) {
-    return await this.chatRepository.getAvailableChatRecipients(userId);
-  }
-
-  /**
-   * Lấy unread count
-   */
-  async getUnreadCount(userId: string, chatRoomId: string) {
-    return await this.chatRepository.getUnreadCount(userId, chatRoomId);
-  }
-
-  /**
-   * Lấy tất cả unread count của user
-   */
-  async getAllUnreadCounts(userId: string) {
-    const conversations = await this.chatRepository.getUserConversations(userId);
-    const unreadCounts: { [key: string]: number } = {};
-
-    for (const conversation of conversations) {
-      const count = await this.getUnreadCount(userId, conversation.id);
-      if (count > 0) {
-        unreadCounts[conversation.id] = count;
-      }
+  async updateMessage(messageId: string, dto: UpdateMessageDto, userId: string) {
+    if (dto.isDeleted) {
+      return await this.chatRepository.deleteMessage(userId, messageId);
     }
 
-    return unreadCounts;
+    if (dto.content) {
+      return await this.chatRepository.editMessage(
+        userId,
+        messageId,
+        dto.content,
+      );
+    }
+
+    throw new ForbiddenException('No update data provided.');
+  }
+
+  /**
+   * Đánh dấu đã đọc
+   */
+  async markAsRead(chatRoomId: string, userId: string) {
+    return await this.chatRepository.markAsRead(userId, chatRoomId);
+  }
+  
+  // Thêm vào ChatService
+  async isParticipant(userId: string, chatRoomId: string): Promise<boolean> {
+    const participant = await this.chatRepository.isParticipant(userId, chatRoomId);
+    return !!participant;
   }
 }
 

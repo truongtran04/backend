@@ -10,5 +10,12 @@ export class DoctorRepository extends BaseRepository<typeof PrismaService.protot
     ){
         super(prisma.doctor, 'doctor_id')
     }
-    
+
+    async countDoctors(): Promise<number> {
+        return await this.prisma.doctor.count({
+            where: {
+                is_available: true,
+            },
+        });
+    }
 }

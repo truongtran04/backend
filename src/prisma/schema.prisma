@@ -10,6 +10,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 enum AppointmentStatus {
@@ -170,50 +171,62 @@ model Appointment {
 }
 
 model ChatRoom {
-  id                  String                @id @default(cuid())
-  type                ConversationType      @default(patient_doctor)
-  createdAt           DateTime              @default(now())
-  updatedAt           DateTime              @updatedAt
-  participants        ChatParticipant[]
-  messages            ChatMessage[]
-  lastMessageAt       DateTime?
+  id              String           @id @default(uuid())
+  type            ConversationType @default(patient_doctor)
+
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  lastMessageAt   DateTime?
+
+  participants    ChatParticipant[]
+  messages        ChatMessage[]    @relation("RoomMessages")
 
   @@index([type])
-  @@index([createdAt])
+  @@index([lastMessageAt])
   @@map("chat_rooms")
 }
 
-model ChatParticipant {
-  id                  String                @id @default(cuid())
-  createdAt           DateTime              @default(now())
-  updatedAt           DateTime              @updatedAt
-  user                User                  @relation(fields: [userId], references: [user_id], onDelete: Cascade)
-  userId              String
-  chatRoom            ChatRoom              @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
-  chatRoomId          String
-  lastReadMessageId   String?
-  lastReadAt          DateTime?
 
-  @@unique([userId, chatRoomId])
+
+
+model ChatParticipant {
+  userId     String
+  chatRoomId String
+
+  user       User     @relation(fields: [userId], references: [user_id], onDelete: Cascade)
+  chatRoom   ChatRoom @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+
+  lastReadMessageId String?
+  lastReadAt        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([userId, chatRoomId])
   @@index([chatRoomId])
-  @@index([userId])
   @@map("chat_participants")
 }
 
 model ChatMessage {
-  id                  String                @id @default(cuid())
-  createdAt           DateTime              @default(now())
-  updatedAt           DateTime              @updatedAt
-  content             String
-  isEdited            Boolean               @default(false)
-  isDeleted           Boolean               @default(false)
-  sender              User                  @relation(fields: [senderId], references: [user_id], onDelete: Cascade)
-  senderId            String
-  chatRoom            ChatRoom              @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
-  chatRoomId          String
+  id         String   @id @default(uuid())
+  content    String
 
-  @@index([chatRoomId])
+  isEdited   Boolean  @default(false)
+  isDeleted  Boolean  @default(false)
+
+  senderId   String
+  chatRoomId String
+
+  sender     User     @relation(fields: [senderId], references: [user_id], onDelete: Cascade)
+  chatRoom   ChatRoom @relation(name: "RoomMessages", fields: [chatRoomId], references: [id], onDelete: Cascade)
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([chatRoomId, createdAt])
+  @@index([chatRoomId, senderId, createdAt])
   @@index([senderId])
-  @@index([createdAt])
   @@map("chat_messages")
 }
+

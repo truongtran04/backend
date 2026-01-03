@@ -24,6 +24,11 @@ export abstract class BaseTransaction<TModel, ID> {
         return model
     }
 
+    async findMany(where?: Partial<TModel>, include?: Record<string, boolean>, limit?: number, offset?: number): Promise<TModel[]>{
+        const models = await this.repository.findMany(where, include, limit, offset)
+        return models
+    }
+
     async findByField(field: string, value: string | number): Promise<TModel | null>{
         const model = await this.repository.findByField(field, value)
         return model

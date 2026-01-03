@@ -14,7 +14,8 @@ import { IUserResponse } from '../users/user.interface';
 import { ForgotPasswordDTO } from './dto/forgot-password.dto';
 import { ResetPasswordRequest } from './dto/reset-password.dto';
 import { RegisterDTO } from './dto/register.dto';
-import { ActiveUserGuard } from 'src/common/guards/active-user.guard';
+import { DoctorService } from '../doctors/doctor.service';
+import { PatientService } from '../patients/patient.service';
 
 const GUARD = common.admin
 
@@ -22,7 +23,10 @@ const GUARD = common.admin
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
-    private readonly userService: UserService
+    private readonly userService: UserService,
+    private readonly doctorService: DoctorService,
+    private readonly patientService: PatientService,
+
   ) { }
 
 
@@ -57,20 +61,23 @@ export class AuthController {
     try {
       const auth = (request.user as { userId: string })
       const user = await this.userService.findById(auth.userId)
-
+      const doctor = await this.doctorService.findByField('user_id', auth.userId)
+      const patient = await this.patientService.findByField('user_id', auth.userId)
       if (!user) {
         throw new UnauthorizedException("Thông tin không hợp lệ")
       }
 
       const userWithoutPassword: IUserResponse = {
         id: user.user_id,
+        doctorId: doctor?.doctor_id,
+        patientId: patient?.patient_id,
         email: user.email,
         role: user.role,
         isActive: user.is_active,
         createdAt: user.created_at,
         updatedAt: user.updated_at
       }
-      
+
       return ApiResponse.suscess(userWithoutPassword, "Success!", HttpStatus.OK);
     } catch (err) {
       throw err

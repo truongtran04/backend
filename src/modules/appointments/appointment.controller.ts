@@ -36,7 +36,7 @@ export class AppointmentController extends BaseController<Appointment, 'appointm
 
     @GuardType(GUARD)
     @UseGuards(JwtAuthGuard, ActiveUserGuard, RolesGuard)
-    @Roles('patient', 'admin')
+    @Roles('patient')
     @Post()
     @HttpCode(HttpStatus.CREATED)
     async create(
@@ -53,18 +53,64 @@ export class AppointmentController extends BaseController<Appointment, 'appointm
 
     @GuardType(GUARD)
     @UseGuards(JwtAuthGuard, ActiveUserGuard, RolesGuard)
-    @Roles('doctor', 'patient', 'admin')
+    @Roles('doctor')
+    @Get('/doctor')
+    @HttpCode(HttpStatus.OK)
+    async doctorAppointmentList(
+        @Req() req,
+        @Query() query: Record<string, any>,
+    ) : Promise<TApiReponse<AppointmentDTO[]>> {
+
+        const doctorId = req.user.doctorId;
+
+        const data: Appointment[] = await this.appointmentService.showAll({
+            ...query,
+            doctor_id: doctorId
+        }, RELATIONS.APPOINTMENT)
+        
+        return ApiResponse.suscess(
+            this.transformer.transformArray(data, AppointmentDTO),
+            'Success',
+            HttpStatus.OK
+        )
+    }
+
+    @GuardType(GUARD)
+    @UseGuards(JwtAuthGuard, ActiveUserGuard, RolesGuard)
+    @Roles('patient')
+    @Get('/patient')
+    @HttpCode(HttpStatus.OK)
+    async patientAppointmentList(
+        @Query() query: Record<string, any>,
+        @Req() req
+    ) : Promise<TApiReponse<TModelOrPaginate<AppointmentDTO>>> {
+
+        const patientId = req.user.patientId;
+
+        const data: Appointment[] = await this.appointmentService.showAll({
+            ...query,
+            patient_id: patientId
+        }, RELATIONS.APPOINTMENT)
+                
+        return ApiResponse.suscess(
+            this.transformer.transformArray(data, AppointmentDTO),
+            'Success',
+            HttpStatus.OK
+        )
+    }
+
+    @GuardType(GUARD)
+    @UseGuards(JwtAuthGuard, ActiveUserGuard, RolesGuard)
+    @Roles('doctor', 'patient')
     @Get(':id')
     @HttpCode(HttpStatus.OK)
     async show(
         @Param('id') id: string,
-        @Req() req,
     ) : Promise<TApiReponse<AppointmentDTO>> {
 
-        const roleGroup = req.user.role;
         const data: Appointment = await this.appointmentService.show(id, RELATIONS.APPOINTMENT)
         return ApiResponse.suscess(
-            this.transformer.transformSingle(data, AppointmentDTO, [roleGroup]),
+            this.transformer.transformSingle(data, AppointmentDTO),
             'Success', 
             HttpStatus.OK
         )
@@ -72,13 +118,15 @@ export class AppointmentController extends BaseController<Appointment, 'appointm
 
     @GuardType(GUARD)
     @UseGuards(JwtAuthGuard, ActiveUserGuard, RolesGuard)
-    @Roles('doctor', 'patient', 'admin')
+    @Roles('doctor')
     @Post('/confirm/:id')
     @HttpCode(HttpStatus.OK)
     async confirm(
         @Param('id') id: string,
         @Req() req
     ) : Promise<TApiReponse<string>> {
+        console.log(id);
+        console.log(req.user);
         const res = await this.appointmentService.updateAppointmentStatus(
             id,
             req.user,
@@ -94,7 +142,7 @@ export class AppointmentController extends BaseController<Appointment, 'appointm
 
     @GuardType(GUARD)
     @UseGuards(JwtAuthGuard, ActiveUserGuard, RolesGuard)
-    @Roles('doctor', 'patient', 'admin')
+    @Roles('doctor')
     @Post('/complete/:id')
     @HttpCode(HttpStatus.OK)
     async complete(
@@ -116,7 +164,7 @@ export class AppointmentController extends BaseController<Appointment, 'appointm
 
     @GuardType(GUARD)
     @UseGuards(JwtAuthGuard, ActiveUserGuard, RolesGuard)
-    @Roles('doctor', 'patient', 'admin')
+    @Roles('doctor', 'patient')
     @Post('/cancel/:id')
     @HttpCode(HttpStatus.OK)
     async cancel(
@@ -132,78 +180,6 @@ export class AppointmentController extends BaseController<Appointment, 'appointm
             })
         return ApiResponse.message(
             res.message,
-            HttpStatus.OK
-        )
-    }
-
-    @GuardType(GUARD)
-    @UseGuards(JwtAuthGuard, ActiveUserGuard, RolesGuard)
-    @Roles('admin', 'doctor')
-    @Get('/doctor/:id')
-    @HttpCode(HttpStatus.OK)
-    async doctorAppointmentList(
-        @Param('id') id: string,
-        @Query() query: Record<string, any>,
-        @Req() req
-    ) : Promise<TApiReponse<TModelOrPaginate<AppointmentDTO>>> {
-
-        const roleGroup = req.user.role;
-        const user = req.user;
-
-        // Security enhancement: Doctors can only see their own appointments.
-        // Admins can see any doctor's appointments.
-        if (roleGroup === 'doctor' && user.doctorId !== id) {
-            throw new ForbiddenException('Bạn chỉ có thể xem danh sách lịch hẹn của chính mình.');
-        }
-
-        query.doctor_id = id;
-
-        const data: Appointment[] | IPaginateResult<Appointment> = await this.appointmentService.paginate(query, RELATIONS.APPOINTMENT)
-                
-        const dataTransform: TModelOrPaginate<AppointmentDTO> = Array.isArray(data)
-                    ? this.transformer.transformArray(data, AppointmentDTO, [roleGroup])
-                    : this.transformer.transformPaginated(data, AppointmentDTO, [roleGroup])
-        
-        return ApiResponse.suscess(
-            dataTransform,
-            'Success',
-            HttpStatus.OK
-        )
-    }
-
-    @GuardType(GUARD)
-    @UseGuards(JwtAuthGuard, ActiveUserGuard, RolesGuard)
-    @Roles('admin', 'patient')
-    @Get('/patient/:id')
-    @HttpCode(HttpStatus.OK)
-    async patientAppointmentList(
-        @Param('id') id: string,
-        @Query() query: Record<string, any>,
-        @Req() req
-    ) : Promise<TApiReponse<TModelOrPaginate<AppointmentDTO>>> {
-
-        const roleGroup = req.user.role;
-        const user = req.user;
-
-        // Security enhancement: Patients can only see their own appointments.
-        // Admins can see any patient's appointments.
-        if (roleGroup === 'patient') {
-            const patientProfile = await this.appointmentService.getPatientProfile(user.userId);
-            if (!patientProfile || patientProfile.patient_id !== id) {
-                throw new ForbiddenException('Bạn chỉ có thể xem danh sách lịch hẹn của chính mình.');
-            }
-        }
-        query.patient_id = id;
-
-        const data: Appointment[] | IPaginateResult<Appointment> = await this.appointmentService.paginate(query, RELATIONS.APPOINTMENT)
-                
-        const dataTransform: TModelOrPaginate<AppointmentDTO> = Array.isArray(data)
-                    ? this.transformer.transformArray(data, AppointmentDTO, [roleGroup])
-                    : this.transformer.transformPaginated(data, AppointmentDTO, [roleGroup])
-        
-        return ApiResponse.suscess(
-            dataTransform,
-            'Success',
             HttpStatus.OK
         )
     }

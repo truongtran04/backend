@@ -70,157 +70,32 @@ export class ScheduleController extends BaseController<DoctorSchedule, 'schedule
         );
     }
 
-
-    /**
-     * ⚠️ IMPORTANT: Place specific routes BEFORE dynamic routes (:id)
-     * 🆕 NEW: Lấy các ngày có lịch khám của bác sĩ (để hiển thị calendar)
-     * Endpoint: GET /v1/schedules/doctor/:doctorId/available-dates
-     */
-    @Get('doctor/:doctorId/available-dates')
-    @HttpCode(HttpStatus.OK)
-    async getAvailableDates(
-        @Param('doctorId') doctorId: string,
-        @Query() query: Record<string, any>,
-    ): Promise<TApiReponse<string[]>> {
-        try {
-            this.controllerLogger.log(`Getting available dates for doctor ${doctorId}`);
-            
-            const dates = await this.scheduleService.getAvailableDates(
-                doctorId,
-                query.from_date,
-                query.to_date,
-                query.is_available !== 'false' // default true
-            );
-
-            return ApiResponse.suscess(
-                dates,
-                'Success',
-                HttpStatus.OK
-            );
-        } catch (error) {
-            this.controllerLogger.error(`Error getting available dates: ${error.message}`, error.stack);
-            throw error;
-        }
-    }
-
-    /**
-     * 🆕 NEW: Lấy tất cả lịch khám (public hoặc theo doctor)
-     * Endpoint: GET /v1/schedules
-     * ⚠️ MUST be placed BEFORE @Get(':id')
-     */
-    @GuardType(GUARD)
-    @UseGuards(JwtAuthGuard, ActiveUserGuard)
-    @Get()
-    @HttpCode(HttpStatus.OK)
-    async getSchedules(
-        @Query() query: Record<string, any>,
-        @Req() req,
-    ): Promise<TApiReponse<TModelOrPaginate<ScheduleDTO>>> {
-        try {
-            // Allow public access, but check for role if user is authenticated
-            const role = req.user?.role || 'patient';
-            if (req.user?.role === 'doctor' && !query.doctor_id) {
-                const doctorId = await this.scheduleService.getDoctorId(req.user);
-                if (doctorId) {
-                    query.doctor_id = doctorId;
-                    this.controllerLogger.log(`Forcing filter by logged-in doctor_id: ${doctorId}`);
-                }
-            }
-            
-            // Validate và transform schedule_date nếu có
-            if (query.schedule_date) {
-                query.schedule_date = this.normalizeScheduleDate(query.schedule_date);
-            }
-            
-            const data: DoctorSchedule[] | IPaginateResult<DoctorSchedule> = 
-                await this.scheduleService.paginate(query, RELATIONS.SCHEDULE);
-            
-            const dataTransform: TModelOrPaginate<ScheduleDTO> = Array.isArray(data)
-                ? this.transformer.transformArray(data, ScheduleDTO, [role])
-                : this.transformer.transformPaginated(data, ScheduleDTO, [role]);
-
-            return ApiResponse.suscess(
-                dataTransform, 
-                'Success',
-                HttpStatus.OK
-            );
-        } catch (error) {
-            this.controllerLogger.error(`Error getting schedules: ${error.message}`, error.stack);
-            throw error;
-        }
-    }
-
-    /**
-     * GET single schedule by ID
-     * ⚠️ MUST be placed AFTER all specific routes
-     * Endpoint: GET /v1/schedules/:id
-     */
-    @GuardType(GUARD)
-    @UseGuards(JwtAuthGuard, ActiveUserGuard, RolesGuard)
-    @Roles('admin', 'doctor', 'patient')
+    
     @Get(':id')
-
     @HttpCode(HttpStatus.OK)
     async show(
         @Param('id') id: string,
-        @Req() req,
     ): Promise<TApiReponse<ScheduleDTO>> {
-        const role = req.user.role;
         const data: DoctorSchedule = await this.scheduleService.show(id, RELATIONS.SCHEDULE);
 
         return ApiResponse.suscess(
-            this.transformer.transformSingle(data, ScheduleDTO, [role]),
+            this.transformer.transformSingle(data, ScheduleDTO),
             'Success',
             HttpStatus.CREATED
         )
     }
 
-    @Get('/doctor')
+    @Get()
     @HttpCode(HttpStatus.OK)
-    async getListSchedulesByDoctor(
+    async showAll(
         @Query() query: Record<string, any>,
-    ): Promise<TApiReponse<TModelOrPaginate<ScheduleDTO>>>{
-        const data: DoctorSchedule[] | IPaginateResult<DoctorSchedule> = await this.scheduleService.paginate(query, RELATIONS.SCHEDULE)
-        
-        const dataTransform: TModelOrPaginate<ScheduleDTO> = Array.isArray(data)
-            ? this.transformer.transformArray(data, ScheduleDTO)
-            : this.transformer.transformPaginated(data, ScheduleDTO)
-
+    ): Promise<TApiReponse<ScheduleDTO[]>>{
+        const data: DoctorSchedule[] = await this.scheduleService.showAll(query, RELATIONS.SCHEDULE)
         return ApiResponse.suscess(
-            dataTransform, 
+            this.transformer.transformArray(data, ScheduleDTO),
             'Success',
-
             HttpStatus.OK
-        );
+        )
     }
 
-    /**
-     * Helper: Normalize schedule_date to UTC Date for querying
-     * Input: YYYY-MM-DD
-     * Output: Date object at start of day UTC
-     */
-    private normalizeScheduleDate(dateStr: string): Date {
-        if (!dateStr || typeof dateStr !== 'string') {
-            throw new Error('Invalid date format: date string is empty or not a string.');
-        }
-
-        try {
-            let year, month, day;
-            const parts = dateStr.split('-').map(Number);
-
-            // Thử phân tích YYYY-MM-DD trước
-            if (parts.length === 3 && parts[0] > 1000) {
-                [year, month, day] = parts;
-            } 
-            // Nếu không được, thử phân tích DD-MM-YYYY
-            else if (parts.length === 3 && parts[2] > 1000) {
-                [day, month, year] = parts;
-            }
-            
-            return new Date(Date.UTC(year, month - 1, day));
-        } catch (error) {
-            this.controllerLogger.error(`Error normalizing date ${dateStr}: ${error.message}`);
-            throw new Error(`Invalid date format: ${dateStr}. Expected YYYY-MM-DD`);
-        }
-    }
 }

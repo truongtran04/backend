@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, BadRequestException } from "@nestjs/common";
+import { Inject, Injectable, Logger, BadRequestException, forwardRef } from "@nestjs/common";
 import { UserRepository } from "./user.repository";
 import { BaseService } from "src/common/bases/base.service";
 import { User } from "@prisma/client";
@@ -19,6 +19,7 @@ export class UserService extends BaseService<UserRepository, User> {
     private readonly userRepository: UserRepository,
     protected readonly prismaService: PrismaService,
     private readonly validateService: ValidateService,
+    @Inject(forwardRef(() => PatientService))
     private readonly patientService: PatientService,
 
   ) {

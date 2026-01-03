@@ -1,205 +1,216 @@
-import { Controller, Post, Body, Get, Param, Query, Req, UseGuards, Put, Delete } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  Req,
+  HttpCode,
+  HttpStatus,
+  Logger,
+  ForbiddenException,
+  BadRequestException,
+} from '@nestjs/common';
 import { ChatService } from './chat.service';
-import { JwtAuthGuard, GuardType } from 'src/common/guards/jwt-auth.guard';
+import { SendMessageDto, UpdateMessageDto, FindOrCreateConversationDto } from './dto';
+import { ValidationPipe } from 'src/pipes/validation.pipe';
+import { ApiResponse, TApiReponse } from 'src/common/bases/api-reponse';
+import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
+import { GuardType } from 'src/common/guards/jwt-auth.guard';
+import { ActiveUserGuard } from 'src/common/guards/active-user.guard';
+import { RolesGuard } from 'src/common/guards/roles.guard';
+import { Roles } from 'src/common/decorators/roles.decorator';
 import { common } from 'src/config/constant';
-import { ChatGateway } from './chat.gateway';
-import { CreateConversationDto } from './dto/create-conversation.dto';
-import { SendMessageDto } from './dto/send-message.dto';
-import { MarkAsReadDto } from './dto/mark-as-read.dto';
-import { SearchConversationDto } from './dto/search-conversation.dto';
+import { DoctorService } from '../doctors/doctor.service';
+import { PatientService } from '../patients/patient.service';
 
-interface AuthenticatedRequest extends Request {
-  user: {
-    userId: string;
-    role: string;
-    guard: string;
-  };
-}
+const GUARD = common.admin;
 
 @Controller('v1/chat')
-@GuardType(common.admin)
-@UseGuards(JwtAuthGuard)
 export class ChatController {
+  private readonly logger = new Logger(ChatController.name);
+
   constructor(
     private readonly chatService: ChatService,
-    private readonly chatGateway: ChatGateway,
-    ) {}
+    private readonly doctorService: DoctorService,
+    private readonly patientService: PatientService,
+  ) { }
 
   /**
-   * Tạo hoặc lấy cuộc trò chuyện với một người dùng
+   * Tìm hoặc tạo conversation 
+   * POST /v1/chat/conversations/find-or-create
    */
-  @Post('conversations')
-  async initiateChat(
-    @Req() req: AuthenticatedRequest, 
-    @Body() body: CreateConversationDto
-    ): Promise<Record<string, unknown>> {
-    const initiatorId: string = req.user.userId;
-    const { recipientId, type } = body;
-    return await this.chatService.findOrCreateChatRoom(initiatorId, recipientId, type);
+  @GuardType(GUARD)
+  @UseGuards(JwtAuthGuard, ActiveUserGuard, RolesGuard)
+  @Roles('doctor', 'patient')
+  @Post('/conversations/find-or-create')
+  @HttpCode(HttpStatus.OK)
+  async findOrCreateConversation(
+    @Body(new ValidationPipe()) dto: FindOrCreateConversationDto,
+    @Req() req,
+  ): Promise<TApiReponse<any>> {
+    try {
+      const currentUserId = req.user.userId
+      const currentRole = req.user.role;
+      console.log(currentUserId, currentRole);
+      
+      let recipientUserId: string;
+
+      if (currentRole === 'patient') {
+        recipientUserId = await this.doctorService.getUserIdByDoctorId(dto.recipientId)
+      }
+      else if (currentRole === 'doctor') {
+        recipientUserId = await this.patientService.getUserIdByPatientId(dto.recipientId);
+      }
+      else {
+        throw new BadRequestException('Role không được hỗ trợ.');
+      }
+
+      const data = await this.chatService.findOrCreateConversation(
+        currentUserId,
+        recipientUserId,
+      );
+
+      return ApiResponse.suscess(data, 'Success', HttpStatus.OK);
+    } catch (error) {
+      this.logger.error('Error in findOrCreateConversation:', error);
+      throw error;
+    }
   }
 
   /**
-   * Lấy tất cả cuộc trò chuyện của user hiện tại
+   * Lấy danh sách conversations
+   * GET /v1/chat/conversations
    */
-  @Get('conversations')
-  async getUserChatRooms(
-    @Req() req: AuthenticatedRequest,
+  @GuardType(GUARD)
+  @UseGuards(JwtAuthGuard, ActiveUserGuard, RolesGuard)
+  @Roles('doctor', 'patient')
+  @Get('/conversations')
+  @HttpCode(HttpStatus.OK)
+  async getConversations(
     @Query('limit') limit: string = '50',
-    @Query('offset') offset: string = '0'
-  ): Promise<Record<string, unknown>[]> {
-    const userId = req.user.userId;
-    return await this.chatService.getUserChatRooms(userId, parseInt(limit), parseInt(offset));
+    @Query('offset') offset: string = '0',
+    @Req() req: any,
+  ): Promise<TApiReponse<any[]>> {
+    try {
+      const userId = req.user?.userId;
+      const data = await this.chatService.getUserConversations(
+        userId,
+        parseInt(limit),
+        parseInt(offset),
+      );
+
+      return ApiResponse.suscess(data, 'Success', HttpStatus.OK);
+    } catch (error) {
+      this.logger.error('Error in getConversations:', error);
+      throw error;
+    }
   }
 
   /**
-   * Lấy cuộc trò chuyện theo loại (patient_doctor hoặc doctor_doctor)
+   * Lấy messages
+   * GET /v1/chat/conversations/:id/messages
    */
-  @Get('conversations/type/:type')
-  async getConversationsByType(
-    @Req() req: AuthenticatedRequest,
-    @Param('type') type: string,
-    @Query('limit') limit: string = '50',
-    @Query('offset') offset: string = '0'
-  ): Promise<Record<string, unknown>[]> {
-    const userId = req.user.userId;
-    return await this.chatService.getConversationsByType(
-      userId,
-      type as any,
-      parseInt(limit),
-      parseInt(offset)
-    );
-  }
-
-  /**
-   * Tìm kiếm cuộc trò chuyện
-   */
-  @Post('conversations/search')
-  async searchConversations(
-    @Req() req: AuthenticatedRequest,
-    @Body() body: SearchConversationDto
-  ): Promise<Record<string, unknown>[]> {
-    const userId = req.user.userId;
-    return await this.chatService.searchConversations(userId, body.query, body.limit || 10);
-  }
-
-  /**
-   * Lấy thông tin chi tiết của một cuộc trò chuyện
-   */
-  @Get('conversations/:roomId/details')
-  async getConversationDetails(
-    @Req() req: AuthenticatedRequest,
-    @Param('roomId') roomId: string
-  ): Promise<Record<string, unknown>> {
-    const userId = req.user.userId;
-    return await this.chatService.getConversationDetails(userId, roomId);
-  }
-
-  /**
-   * Lấy lịch sử tin nhắn của một cuộc trò chuyện
-   */
-  @Get('conversations/:roomId/messages')
-  async getChatMessages(
-    @Req() req: AuthenticatedRequest,
-    @Param('roomId') roomId: string,
+  @GuardType(GUARD)
+  @UseGuards(JwtAuthGuard, ActiveUserGuard, RolesGuard)
+  @Roles('doctor', 'patient')
+  @Get('/messages/:id')
+  @HttpCode(HttpStatus.OK)
+  async getMessages(
+    @Param('id') chatRoomId: string,
     @Query('page') page: string = '1',
     @Query('pageSize') pageSize: string = '20',
-  ): Promise<Record<string, unknown>[]> {
-    const userId = req.user.userId;
-    console.log(`[ChatController] GET messages - userId=${userId} (from token), roomId=${roomId}`);
-    return await this.chatService.getChatMessages(userId, roomId, parseInt(page), parseInt(pageSize));
+    @Req() req: any,
+  ): Promise<TApiReponse<any>> {
+    try {
+      const userId = req.user?.userId;
+      const data = await this.chatService.getMessages(
+        chatRoomId,
+        userId,
+        parseInt(page),
+        parseInt(pageSize),
+      );
+
+      return ApiResponse.suscess(data, 'Success', HttpStatus.OK);
+    } catch (error) {
+      this.logger.error('Error in getMessages:', error);
+      throw error;
+    }
   }
 
   /**
-   * Gửi tin nhắn vào một cuộc trò chuyện
+   * Gửi message
+   * POST /v1/chat/messages
    */
-  @Post('conversations/:roomId/messages')
+  @GuardType(GUARD)
+  @UseGuards(JwtAuthGuard, ActiveUserGuard, RolesGuard)
+  @Roles('doctor', 'patient')
+  @Post('/messages')
+  @HttpCode(HttpStatus.CREATED)
   async sendMessage(
-    @Req() req: AuthenticatedRequest,
-    @Param('roomId') roomId: string,
-    @Body() body: SendMessageDto,
-  ): Promise<Record<string, unknown>> {
-    const userId = req.user.userId;
-    const { content } = body;
-    const message = await this.chatService.createMessage(userId, roomId, content);
+    @Body(new ValidationPipe()) dto: SendMessageDto,
+    @Req() req: any,
+  ): Promise<TApiReponse<any>> {
+    try {
+      const userId = req.user?.userId;
+      const data = await this.chatService.sendMessage(dto, userId);
 
-    // Phát tin nhắn qua WebSocket
-    this.chatGateway.server.to(roomId).emit('privateMessage', message);
-
-    return message;
+      return ApiResponse.suscess(data, 'Success', HttpStatus.CREATED);
+    } catch (error) {
+      this.logger.error('Error in sendMessage:', error);
+      throw error;
+    }
   }
 
   /**
-   * Đánh dấu tin nhắn đã đọc
+   * Sửa/xóa message
+   * PUT /v1/chat/messages/:id
    */
-  @Put('conversations/:roomId/mark-as-read')
+  @GuardType(GUARD)
+  @UseGuards(JwtAuthGuard, ActiveUserGuard, RolesGuard)
+  @Roles('doctor', 'patient')
+  @Put('/messages/:id')
+  @HttpCode(HttpStatus.OK)
+  async updateMessage(
+    @Param('id') id: string,
+    @Body(new ValidationPipe()) dto: UpdateMessageDto,
+    @Req() req: any,
+  ): Promise<TApiReponse<any>> {
+    try {
+      const userId = req.user?.userId;
+      const data = await this.chatService.updateMessage(id, dto, userId);
+
+      return ApiResponse.suscess(data, 'Success', HttpStatus.OK);
+    } catch (error) {
+      this.logger.error('Error in updateMessage:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Đánh dấu đã đọc
+   * POST /v1/chat/conversations/:id/read
+   */
+  @GuardType(GUARD)
+  @UseGuards(JwtAuthGuard, ActiveUserGuard, RolesGuard)
+  @Roles('doctor', 'patient')
+  @Post('conversations/:id/read')
+  @HttpCode(HttpStatus.OK)
   async markAsRead(
-    @Req() req: AuthenticatedRequest,
-    @Param('roomId') roomId: string,
-    @Body() body: MarkAsReadDto
-  ): Promise<Record<string, unknown>> {
-    const userId = req.user.userId;
-    return await this.chatService.markAsRead(userId, roomId, body.lastReadMessageId);
-  }
+    @Param('id') chatRoomId: string,
+    @Req() req: any,
+  ): Promise<TApiReponse<any>> {
+    try {
+      const userId = req.user?.userId;
+      const data = await this.chatService.markAsRead(chatRoomId, userId);
 
-  /**
-   * Xóa tin nhắn
-   */
-  @Delete('messages/:messageId')
-  async deleteMessage(
-    @Req() req: AuthenticatedRequest,
-    @Param('messageId') messageId: string
-  ): Promise<Record<string, unknown>> {
-    const userId = req.user.userId;
-    return await this.chatService.deleteMessage(userId, messageId);
-  }
-
-  /**
-   * Chỉnh sửa tin nhắn
-   */
-  @Put('messages/:messageId')
-  async editMessage(
-    @Req() req: AuthenticatedRequest,
-    @Param('messageId') messageId: string,
-    @Body() body: SendMessageDto
-  ): Promise<Record<string, unknown>> {
-    const userId = req.user.userId;
-    return await this.chatService.editMessage(userId, messageId, body.content);
-  }
-
-  /**
-   * Lấy danh sách các người có thể chat
-   */
-  @Get('recipients')
-  async getAvailableChatRecipients(
-    @Req() req: AuthenticatedRequest
-  ): Promise<Record<string, unknown>[]> {
-    const userId = req.user.userId;
-    return await this.chatService.getAvailableChatRecipients(userId);
-  }
-
-  /**
-   * Lấy số lượng tin nhắn chưa đọc của một cuộc trò chuyện
-   */
-  @Get('conversations/:roomId/unread-count')
-  async getUnreadCount(
-    @Req() req: AuthenticatedRequest,
-    @Param('roomId') roomId: string
-  ): Promise<Record<string, unknown>> {
-    const userId = req.user.userId;
-    const count = await this.chatService.getUnreadCount(userId, roomId);
-    return { unreadCount: count };
-  }
-
-  /**
-   * Lấy tất cả unread counts
-   */
-  @Get('unread-counts')
-  async getAllUnreadCounts(
-    @Req() req: AuthenticatedRequest
-  ): Promise<Record<string, unknown>> {
-    const userId = req.user.userId;
-    const counts = await this.chatService.getAllUnreadCounts(userId);
-    return { unreadCounts: counts };
+      return ApiResponse.suscess(data, 'Success', HttpStatus.OK);
+    } catch (error) {
+      this.logger.error('Error in markAsRead:', error);
+      throw error;
+    }
   }
 }
-

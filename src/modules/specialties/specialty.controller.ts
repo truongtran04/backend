@@ -101,6 +101,24 @@ export class SpecialtyController extends BaseController<Specialty, 'specialty_id
 
     }
 
+    @Get()
+    @HttpCode(HttpStatus.OK)
+    async showAll(
+        @Query() query: Record<string, any>
+    ): Promise<TApiReponse<SpecialtyDTO[]>>{
+        try {
+            const data: Specialty[] = await this.specialtyService.showAll(query)
+            return ApiResponse.suscess(
+                this.transformer.transformArray(data, SpecialtyDTO), 
+                'Success',
+                HttpStatus.OK
+            )
+        } catch (error) {
+            this.controllerLogger.error('Error in findAll:', error);
+            throw error;
+        }
+    }
+
     @Get(':id')
     @HttpCode(HttpStatus.OK)
     async show(
@@ -114,21 +132,4 @@ export class SpecialtyController extends BaseController<Specialty, 'specialty_id
         )
     }
 
-    @Get()
-    @HttpCode(HttpStatus.OK)
-    async paginate(
-        @Query() query: Record<string, any>
-    ): Promise<TApiReponse<TModelOrPaginate<SpecialtyDTO>>>{
-        const data: Specialty[] | IPaginateResult<Specialty> = await this.specialtyService.paginate(query)
-        
-        const dataTransform: TModelOrPaginate<SpecialtyDTO> = Array.isArray(data)
-            ? this.transformer.transformArray(data, SpecialtyDTO)
-            : this.transformer.transformPaginated(data, SpecialtyDTO)
-
-        return ApiResponse.suscess(
-            dataTransform, 
-            'Success',
-            HttpStatus.OK
-        )
-    }
 }

@@ -12,6 +12,8 @@ export interface User {
 
 export interface IUserResponse {
     id: string,
+    doctorId?: string,
+    patientId?: string,
     email: string,
     password?: string,
     role: string,

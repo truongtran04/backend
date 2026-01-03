@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, IsDateString, IsBoolean } from 'class-validator';
+import { IsNotEmpty} from 'class-validator';
 import { PartialType } from '@nestjs/mapped-types';
 
 export class UpdateScheduleDTO {
