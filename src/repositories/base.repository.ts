@@ -60,7 +60,7 @@ export class BaseRepository <T extends PrismaModel<TModel>, TModel, ID = string>
     }
 
     async findByField(field: string, value: string | number): Promise<TModel | null> {
-        return await this.model.findUnique({
+        return await this.model.findFirst({
             where: {
                 [field]: value
             }

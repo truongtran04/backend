@@ -1,5 +1,5 @@
 import { IsOptional, IsEnum, IsString, IsDateString } from 'class-validator';
-import { AppointmentStatus } from './create-appointment.dto';
+import { AppointmentStatus } from '../appointment.interface';
 import { Transform } from 'class-transformer';
 
 export class UpdateAppointmentDTO {

@@ -2,9 +2,9 @@ import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './modules/auth/auth.module';
-import { UserModule } from './modules/users/user.module'; 
+import { UserModule } from './modules/users/user.module';
 import { CacheModule } from '@nestjs/cache-manager';
-import { createKeyv }  from '@keyv/redis';
+import { createKeyv } from '@keyv/redis';
 import { PrismaModule } from './prisma/prisma.module';
 import { MailModule } from './modules/mail/mail.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -18,9 +18,10 @@ import { ScheduleModule } from './modules/schedules/schedule.module';
 import { AppointmentModule } from './modules/appointments/appointment.module';
 import { SupabaseModule } from './modules/supabase/supabase.module';
 import { ChatModule } from './modules/chat/chat.module';
-import { MediBotModule } from './modules/MediBot/medibot.module';
+import { MedbotModule } from './modules/medbot/medbot.module';
 @Module({
   imports: [
+    MedbotModule,
     AuthModule,
     UserModule,
     PrismaModule,
@@ -34,7 +35,6 @@ import { MediBotModule } from './modules/MediBot/medibot.module';
     ScheduleModule,
     AppointmentModule,
     SupabaseModule,
-    MediBotModule,
     ConfigModule.forRoot({
       isGlobal: true,
     }),
@@ -42,38 +42,35 @@ import { MediBotModule } from './modules/MediBot/medibot.module';
       isGlobal: true,
       useFactory: () => {
         return {
-           stores: [
+          stores: [
             // new Keyv({
             //   store: new CacheableMemory({ ttl: 60000, lruSize: 5000 }),
             //   namespace: 'nestjs-memory-cache',
             // }),
-            createKeyv('redis://localhost:6379/1',{ 
-              namespace: 'nestjs_new_cache' 
+            createKeyv('redis://localhost:6379/1', {
+              namespace: 'nestjs_new_cache',
             }),
           ],
         };
-      }
+      },
     }),
     BullModule.forRootAsync({
-      imports:[ConfigModule],
+      imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
         redis: {
           host: configService.get('REDIS_HOST', '127.0.0.1'),
           port: configService.get('REDIS_PORT', 6379),
-          password: configService.get('REDIS_PASSWORD', '')
+          password: configService.get('REDIS_PASSWORD', ''),
         },
         defaultJobOptions: {
           attempts: 3,
-          removeOnComplete: true
-        }
+          removeOnComplete: true,
+        },
       }),
-      inject: [ConfigService]
+      inject: [ConfigService],
     }),
-    
   ],
   controllers: [AppController],
-  providers: [
-    AppService,
-  ],
+  providers: [AppService],
 })
 export class AppModule {}

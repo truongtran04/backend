@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, BadRequestException } from "@nestjs/common";
+import { Injectable, Logger, BadRequestException } from "@nestjs/common";
 import { BaseService } from "src/common/bases/base.service";
 import { PrismaService } from "src/prisma/prisma.service";
 import { ValidateService } from "../validate/validate.service";
@@ -113,6 +113,155 @@ export class AppointmentService extends BaseService<AppointmentRepository, Appoi
         }
         return createdAppointmentWithRelations;
     }
+    
+    async createAppointmentFromPy(userId: number, doctorName: string, timeString: string) {
+        
+        // 1. Tìm Bác sĩ (Logic cũ)
+        const doctors = await this.doctorService.findDoctorsByName(doctorName);
+        if (!doctors || doctors.length === 0) {
+            return { type: 'TEXT', message: `Không tìm thấy bác sĩ nào tên là "${doctorName}".` };
+        }
+        const doctor = doctors[0]; 
+
+        // 2. Tìm Schedule
+        const requestTime = new Date(timeString);
+        if (isNaN(requestTime.getTime())) return { type: 'TEXT', message: 'Thời gian không hợp lệ.' };
+
+        const availableSchedule = await this.scheduleService.findAvailableSlot(
+            doctor.doctor_id, 
+            requestTime
+        );
+
+        // --- LOGIC MỚI: XỬ LÝ KHI BÁC SĨ BẬN ---
+        // ... (Đoạn tìm schedule bên trên) ...
+
+        // --- XỬ LÝ KHI BÁC SĨ BẬN (GỢI Ý THAY THẾ) ---
+        if (!availableSchedule) {
+            const timeStringDisplay = requestTime.toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'});
+            
+            let suggestionMessage = `Rất tiếc, BS ${doctor.full_name} đã kín lịch lúc ${timeStringDisplay}.`;
+            
+            const suggestions: string[] = [];
+
+            // 1. Tìm giờ khác của CÙNG bác sĩ (Trong cùng ngày)
+            const altSlots = await this.scheduleService.findAlternativeSlots(doctor.doctor_id, requestTime);
+            
+            if (altSlots && altSlots.length > 0) {
+                const timeList = altSlots
+                    .map(s => new Date(s.start_time).toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'}))
+                    .join(", ");
+                
+                suggestions.push(`\nGiờ khác cùng ngày của BS ${doctor.full_name}: ${timeList}`);
+            }
+
+            // 2. Tìm bác sĩ KHÁC cùng chuyên khoa (Rảnh vào giờ đó)
+            if (doctor.specialty_id) {
+                const altDoctors = await this.doctorService.findAlternativeDoctors(
+                    doctor.specialty_id, 
+                    doctor.doctor_id, // Loại trừ bác sĩ hiện tại
+                    requestTime
+                );
+
+                if (altDoctors && altDoctors.length > 0) {
+                    const docList = altDoctors.map(d => d.full_name).join(", ");
+                    
+                    // Push câu gợi ý bác sĩ vào mảng
+                    suggestions.push(`\nBác sĩ khác rảnh lúc đó: ${docList}`);
+                }
+            }
+
+            // 3. Tổng hợp thông báo trả về
+            if (suggestions.length > 0) {
+                suggestionMessage += "\n\nBạn có muốn đổi sang các lựa chọn sau không?" + suggestions.join("");
+                
+                return { 
+                    type: 'BOOKING_SUGGESTION', 
+                    message: suggestionMessage
+                };
+            } else {
+                return { 
+                    type: 'TEXT', 
+                    message: `Rất tiếc, BS ${doctor.full_name} đã kín lịch và hệ thống cũng không tìm thấy bác sĩ thay thế phù hợp vào khung giờ này. Vui lòng chọn ngày khác.` 
+                };
+            }
+        }
+    // 3. Giả lập IAuthUser (Vì hàm createAppointment cần nó)
+    const mockAuthUser: IAuthUser = {
+        userId: userId.toString(),
+        guard: 'user',
+        role: 'patient' 
+    };
+
+    // 4. Tạo DTO chuẩn
+    const dto = new CreateAppointmentDTO();
+    dto.doctor_id = doctor.doctor_id;
+    dto.schedule_id = availableSchedule.schedule_id; // Lấy ID lịch tìm được ở bước 2
+    dto.status = AppointmentStatus.PENDING; // Mặc định là chờ xác nhận
+    dto.notes = 'Đặt lịch qua AI Chatbot';
+    
+    // 5. Gọi lại hàm logic chính (Tái sử dụng code cũ)
+    try {
+        const newAppointment = await this.createAppointment(mockAuthUser, dto);
+        
+        return {
+            type: 'BOOKING_SUCCESS',
+            message: `Đã đặt lịch thành công với BS ${doctor.full_name}!`,
+            data: newAppointment
+        };
+    } catch (error) {
+        console.error(error);
+ return { type: 'TEXT', message: `Có lỗi khi tạo lịch hẹn: ${error.message}` };
+    }
+  }
+
+    async suggestAppointmentTimes(doctorName: string) {
+        // 1. Tìm bác sĩ
+        const doctors = await this.doctorService.findDoctorsByName(doctorName);
+        if (!doctors || doctors.length === 0) {
+            return { type: 'TEXT', message: `Không tìm thấy bác sĩ nào tên là "${doctorName}".` };
+        }
+        
+        const doctor = doctors[0];
+
+        // 2. Tìm lịch rảnh sắp tới
+        const upcomingSlots = await this.scheduleService.findUpcomingSlots(doctor.doctor_id);
+
+        if (!upcomingSlots || upcomingSlots.length === 0) {
+            return { 
+                type: 'TEXT', 
+                message: `Hiện tại BS ${doctor.full_name} chưa có lịch trống nào trong thời gian tới. Vui lòng quay lại sau.` 
+            };
+        }
+
+        // 3. Format hiển thị cho đẹp
+        const groupedSlots = {};
+        
+        upcomingSlots.forEach(slot => {
+            const dateStr = new Date(slot.start_time).toLocaleDateString('vi-VN', {day: '2-digit', month: '2-digit'});
+            const timeStr = new Date(slot.start_time).toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'});
+            
+            if (!groupedSlots[dateStr]) groupedSlots[dateStr] = [];
+            groupedSlots[dateStr].push(timeStr);
+        });
+
+        // Tạo chuỗi tin nhắn
+        let msg = `Chào bạn, BS ${doctor.full_name} hiện còn trống các khung giờ sau:\n`;
+        for (const [date, times] of Object.entries(groupedSlots)) {
+            msg += `Ngày ${date}: ${(times as string[]).join(', ')}\n`;
+        }
+        msg += `\nBạn muốn chốt giờ nào? (Ví dụ: "Đặt 9:30 ngày 03/01")`;
+
+        return {
+            type: 'BOOKING_SUGGESTION', // Frontend có thể hiển thị nút bấm giờ
+            message: msg,
+            data: {
+                doctor: doctor,
+                slots: upcomingSlots
+            }
+        };
+    }
+  
+
 
     private async checkValidateAppointment(id: string, payload: IAuthUser): Promise<Appointment> {
         const doctor = await this.doctorService.findById(payload.userId);
