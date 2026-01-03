@@ -1,12 +1,6 @@
 import { IsNotEmpty, IsOptional, IsEnum, IsString, IsDateString } from 'class-validator';
+import {AppointmentStatus} from '../appointment.interface';
 
-export enum AppointmentStatus {
-  PENDING = 'pending',
-  CONFIRMED = 'confirmed',
-  COMPLETED = 'completed',
-  CANCELLED = 'cancelled',
-  NO_SHOW = 'no_show',
-}
 
 export class CreateAppointmentDTO {
   

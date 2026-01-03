@@ -26,8 +26,17 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
   async validate(request: IRequestWithGuardType, payload: IJwtPayload) {
 
-    if(request.GuardType !== payload.guard){
-      throw new UnauthorizedException("Bạn không có quyền truy cập chức năng này")
+    const allowedGuards = request.GuardType;
+    if (allowedGuards) {
+        if (Array.isArray(allowedGuards)) {
+            if (!allowedGuards.includes(payload.guard)) {
+                throw new UnauthorizedException("Bạn không có quyền truy cập chức năng này");
+            }
+        } else {
+            if (allowedGuards !== payload.guard) {
+                throw new UnauthorizedException("Bạn không có quyền truy cập chức năng này");
+            }
+        }
     }
 
     const token = ExtractJwt.fromAuthHeaderAsBearerToken()(request)

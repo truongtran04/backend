@@ -235,6 +235,62 @@ export class DoctorService extends BaseService<DoctorRepository, Doctor> {
 
         return results;
     }
+    async findDoctorsByName(nameInput: string) {
+        // 1. Xử lý tên đầu vào: Bỏ tiền tố, cắt khoảng trắng thừa, gộp nhiều dấu cách thành 1
+        const cleanName = nameInput
+            .replace(/(bác sĩ|bs\.?|dr\.?)\s+/gi, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        console.log(`🔎 Tìm bác sĩ với từ khóa: "${cleanName}"`);
+
+        // 2. Query Database: Tìm những người có chứa CẢ CỤM TỪ này
+        const candidates = await this.prismaService.doctor.findMany({
+            where: {
+                full_name: {
+                    contains: cleanName, 
+                    mode: 'insensitive'
+                },
+                is_available: true
+            },
+            include: {
+                Specialty: true
+            }
+        });
+
+        // 3. Lọc kỹ lại bằng Regex (Whole Word Search)
+        const safeName = cleanName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        
+        const regex = new RegExp(`(^|\\s)${safeName}(\\s|$)`, 'i');
+
+        const exactMatches = candidates.filter(doc => {
+            return regex.test(doc.full_name);
+        });
+
+        return exactMatches;
+    }
+
+    /**
+     * Tìm bác sĩ khác cùng chuyên khoa đang rảnh vào giờ cụ thể
+     */
+    async findAlternativeDoctors(specialtyId: string, excludeDoctorId: string, timeSlot: Date) {
+        return this.prismaService.doctor.findMany({
+            where: {
+                specialty_id: specialtyId, // Cùng chuyên khoa
+                doctor_id: { not: excludeDoctorId }, // Trừ ông bác sĩ ban đầu ra
+                // Kiểm tra xem bác sĩ này có lịch rảnh vào giờ đó không
+                Schedules: {
+                    some: {
+                        start_time: timeSlot,
+                        is_available: true
+                    }
+                }
+            },
+            take: 3 // Gợi ý tối đa 3 người
+        });
+    }
+
+    
 
 
     async getUserIdByDoctorId(doctorId: string): Promise<string> {

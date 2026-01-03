@@ -67,6 +67,173 @@ export class ScheduleService extends BaseService<ScheduleRepository, DoctorSched
     }
 
 
+    async getAvailableDates(
+        doctorId: string,
+        fromDate?: string,
+        toDate?: string,
+        availableOnly: boolean = true
+    ): Promise<string[]> {
+        try {
+            // Parse dates
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const startDate = fromDate 
+                ? this.parseDate(fromDate)
+                : today;
+
+            const defaultEndDate = new Date(today);
+            defaultEndDate.setDate(defaultEndDate.getDate() + 30);
+
+            const endDate = toDate
+                ? this.parseDate(toDate)
+                : defaultEndDate;
+
+            this.serviceLogger.log(`Getting available dates for doctor ${doctorId} from ${startDate.toISOString()} to ${endDate.toISOString()}`);
+
+            // Query schedules using Prisma directly
+            const whereClause: any = {
+                doctor_id: doctorId,
+                schedule_date: {
+                    gte: startDate,
+                    lte: endDate,
+                },
+            };
+
+            if (availableOnly) {
+                whereClause.is_available = true;
+            }
+
+            // ✅ FIXED: Use repository or prisma directly instead of findAll
+            const schedules = await this.prismaService.doctorSchedule.findMany({
+                where: whereClause,
+                orderBy: {
+                    schedule_date: 'asc'
+                }
+    
+            });
+
+            this.serviceLogger.log(`Found ${schedules.length} schedules`);
+
+            // Extract unique dates and format as YYYY-MM-DD
+            const uniqueDates = new Set<string>();
+            
+            schedules.forEach(schedule => {
+                const date = new Date(schedule.schedule_date);
+                const formatted = this.formatDateToYYYYMMDD(date);
+                uniqueDates.add(formatted);
+            });
+
+            const result = Array.from(uniqueDates).sort();
+            
+            this.serviceLogger.log(`Returning ${result.length} unique dates: ${result.join(', ')}`);
+
+            return result;
+        } catch (error) {
+            this.serviceLogger.error(`Error getting available dates: ${error.message}`, error.stack);
+            throw new BadRequestException(`Không thể lấy danh sách ngày: ${error.message}`);
+        }
+    }
+
+    async findAvailableSlot(doctorId: string, requestTime: Date): Promise<DoctorSchedule | null> {
+        try {
+            this.serviceLogger.log(`Finding available slot for Doctor ${doctorId} at ${requestTime.toISOString()}`);
+
+            // Logic:
+            // 1. Đúng bác sĩ
+            // 2. Lịch phải đang Available (trống)
+            // 3. Thời gian bắt đầu (start_time) phải khớp với thời gian yêu cầu
+            const slot = await this.prismaService.doctorSchedule.findFirst({
+                where: {
+                    doctor_id: doctorId,
+                    is_available: true,
+                    // So sánh chính xác thời gian bắt đầu
+                    start_time: requestTime, 
+                },
+            });
+
+            if (!slot) {
+                this.serviceLogger.warn(`No available slot found for Doctor ${doctorId} at ${requestTime.toISOString()}`);
+            } else {
+                this.serviceLogger.log(`Found schedule ID: ${slot.schedule_id}`);
+            }
+
+            return slot;
+        } catch (error) {
+            this.serviceLogger.error(`Error finding slot: ${error.message}`);
+            return null; // Trả về null để bên AppointmentService xử lý thông báo lỗi
+        }
+    }
+
+    /**
+     * Tìm các slot rảnh khác của bác sĩ trong cùng ngày
+     */
+     async findAlternativeSlots(doctorId: string, originalDate: Date): Promise<DoctorSchedule[]> {
+        // Xác định đầu ngày và cuối ngày
+        const startOfDay = new Date(originalDate);
+        startOfDay.setHours(0, 0, 0, 0);
+        
+        const endOfDay = new Date(originalDate);
+        endOfDay.setHours(23, 59, 59, 999);
+
+        return this.prismaService.doctorSchedule.findMany({
+            where: {
+                doctor_id: doctorId,
+                is_available: true,
+                schedule_date: {
+                    gte: startOfDay,
+                    lte: endOfDay
+                },
+                // Chỉ lấy các slot chưa qua (nếu là ngày hôm nay)
+                // start_time: { gt: new Date() } // Uncomment nếu muốn chặn giờ quá khứ chặt chẽ
+            },
+            orderBy: {
+                start_time: 'asc'
+            },
+            take: 3 // Chỉ lấy 3 gợi ý gần nhất
+        });
+    }
+
+    /**
+     * Tìm các slot rảnh sắp tới của bác sĩ (tính từ giờ hiện tại)
+     */
+    async findUpcomingSlots(doctorId: string, limit: number = 5) {
+        return this.prismaService.doctorSchedule.findMany({
+            where: {
+                doctor_id: doctorId,
+                is_available: true,
+                start_time: {
+                    gte: new Date() 
+                }
+            },
+            orderBy: {
+                start_time: 'asc' 
+            },
+            take: limit
+        });
+    }
+
+    /**
+     * Tìm tất cả bác sĩ rảnh vào một khung giờ cụ thể
+     */
+    async findSchedulesByTime(date: Date) {
+        return this.prismaService.doctorSchedule.findMany({
+            where: {
+                start_time: date,
+                is_available: true
+            },
+            include: {
+                Doctor: {
+                    include: {
+                        Specialty: true
+                    }
+                }
+            }
+        });
+    }
+
+    /**
+     * Helper: Parse date string (YYYY-MM-DD) to Date object at start of day UTC
+     */
     private parseDate(dateStr: string): Date {
         const [year, month, day] = dateStr.split('-').map(Number);
         return new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
@@ -198,6 +365,7 @@ export class ScheduleService extends BaseService<ScheduleRepository, DoctorSched
             );
         }
     }
+    
 
     private getDayBoundaries(date: Date): { startOfDay: Date; endOfDay: Date } {
         if (isNaN(date.getTime())) {
