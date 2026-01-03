@@ -290,4 +290,6 @@ export class DoctorService extends BaseService<DoctorRepository, Doctor> {
         });
     }
 
+    
+
 }

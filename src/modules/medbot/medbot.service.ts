@@ -40,21 +40,31 @@ export class MedbotService {
           return await this.processHealthCheck(text);
 
         case 'BOOKING':
-          if (!aiResult.entities.doctor_name) {
-            return { type: 'TEXT', message: "Bạn muốn đặt lịch với bác sĩ nào?" };
+          // Trường hợp 1: Có tên bác sĩ + Có giờ -> Đặt luôn 
+          if (aiResult.entities.doctor_name && aiResult.entities.time) {
+              return await this.appointmentService.createAppointmentFromPy(
+                userId,
+                aiResult.entities.doctor_name,
+                aiResult.entities.time,
+              );
           }
 
-          if (!aiResult.entities.time) {
+          // Trường hợp 2: Có tên bác sĩ + Thiếu giờ -> Gợi ý giờ rảnh của bác sĩ đó
+          if (aiResult.entities.doctor_name && !aiResult.entities.time) {
               return await this.appointmentService.suggestAppointmentTimes(
                   aiResult.entities.doctor_name
               );
           }
 
-          return await this.appointmentService.createAppointmentFromPy(
-            userId,
-            aiResult.entities.doctor_name,
-            aiResult.entities.time,
-          );
+          // Trường hợp 3: Thiếu tên bác sĩ + Có giờ -> Gợi ý bác sĩ rảnh giờ đó 
+          if (!aiResult.entities.doctor_name && aiResult.entities.time) {
+              return await this.appointmentService.suggestDoctorsByTime(
+                  aiResult.entities.time
+              );
+          }
+
+          // Trường hợp 4: Thiếu cả hai -> Hỏi lại
+          return { type: 'TEXT', message: "Bạn muốn đặt lịch khám vào lúc nào hoặc với bác sĩ nào?" };
 
         case 'DOCTOR_INFO':
           // Gọi logic tìm thông tin bác sĩ

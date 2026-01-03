@@ -261,7 +261,44 @@ export class AppointmentService extends BaseService<AppointmentRepository, Appoi
         };
     }
   
+    /**
+     * Gợi ý danh sách bác sĩ rảnh theo giờ người dùng chọn
+     */
+    async suggestDoctorsByTime(timeString: string) {
+        const requestTime = new Date(timeString);
+        
+        if (isNaN(requestTime.getTime())) {
+            return { type: 'TEXT', message: 'Thời gian không hợp lệ.' };
+        }
 
+        // 1. Gọi ScheduleService tìm lịch
+        const schedules = await this.scheduleService.findSchedulesByTime(requestTime);
+
+        // 2. Nếu không có ai rảnh
+        if (!schedules || schedules.length === 0) {
+            const timeDisplay = requestTime.toLocaleString('vi-VN', {hour: '2-digit', minute:'2-digit', day: '2-digit', month: '2-digit'});
+            return { 
+                type: 'TEXT', 
+                message: `Rất tiếc, không có bác sĩ nào rảnh vào lúc ${timeDisplay}. Bạn vui lòng chọn khung giờ khác.` 
+            };
+        }
+
+        // 3. Format danh sách bác sĩ để hiển thị
+        // schedules chứa mảng các lịch, từ lịch lấy ra thông tin bác sĩ
+        const doctorList = schedules.map(sch => {
+            const doc = sch.Doctor;
+            const specialtyName = doc.Specialty ? doc.Specialty.name : 'Đa khoa';
+            return `- **BS ${doc.full_name}** (${specialtyName})`;
+        }).join("\n");
+
+        const timeDisplay = requestTime.toLocaleString('vi-VN', {hour: '2-digit', minute:'2-digit', day: '2-digit', month: '2-digit'});
+
+        return {
+            type: 'DOCTOR_SUGGESTION', // Type mới để Frontend biết hiển thị dạng list chọn
+            message: `Vào lúc ${timeDisplay}, hệ thống tìm thấy các bác sĩ sau đang rảnh:\n\n${doctorList}\n\nBạn muốn đặt với bác sĩ nào? (Gõ "Đặt với BS [Tên]" để chốt)`,
+            data: schedules.map(s => s.Doctor) // Trả về data raw để FE xử lý nếu cần
+        };
+    }
 
     private async checkValidateAppointment(id: string, payload: IAuthUser): Promise<Appointment> {
         const doctor = await this.doctorService.findById(payload.userId);

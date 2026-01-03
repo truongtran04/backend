@@ -201,7 +201,7 @@ export class ScheduleService extends BaseService<ScheduleRepository, DoctorSched
             take: 3 // Chỉ lấy 3 gợi ý gần nhất
         });
     }
-    
+
     /**
      * Tìm các slot rảnh sắp tới của bác sĩ (tính từ giờ hiện tại)
      */
@@ -211,13 +211,32 @@ export class ScheduleService extends BaseService<ScheduleRepository, DoctorSched
                 doctor_id: doctorId,
                 is_available: true,
                 start_time: {
-                    gte: new Date() // Chỉ lấy giờ tương lai
+                    gte: new Date() 
                 }
             },
             orderBy: {
-                start_time: 'asc' // Sắp xếp từ gần đến xa
+                start_time: 'asc' 
             },
             take: limit
+        });
+    }
+
+    /**
+     * Tìm tất cả bác sĩ rảnh vào một khung giờ cụ thể
+     */
+    async findSchedulesByTime(date: Date) {
+        return this.prismaService.doctorSchedule.findMany({
+            where: {
+                start_time: date,
+                is_available: true
+            },
+            include: {
+                Doctor: {
+                    include: {
+                        Specialty: true
+                    }
+                }
+            }
         });
     }
 
