@@ -8,7 +8,7 @@ import {
   MessageBody,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Logger } from '@nestjs/common';
+import { forwardRef, Inject, Logger } from '@nestjs/common';
 import { ChatService } from './chat.service';
 import { SendMessageDto } from './dto';
 
@@ -27,7 +27,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   private readonly logger = new Logger(ChatGateway.name);
 
-  constructor(private readonly chatService: ChatService) {}
+  constructor(
+    @Inject(forwardRef(() => ChatService)) 
+    private readonly chatService: ChatService
+  ) {}
 
   handleConnection(client: Socket) {
     this.logger.log(`Client connected: ${client.id}`);
@@ -52,65 +55,60 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('join_room')
-  async handleJoinRoom(
+  handleJoinRoom(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { chatRoomId: string },
+    @MessageBody() data: { chatRoomId: string } | string, 
   ) {
-    const userId = client.data.userId;
-    
-    try {
-      // Join room
-      client.join(data.chatRoomId);
-      this.logger.log(`User ${userId} joined room ${data.chatRoomId}`);
-      
-      return { success: true, message: 'Joined room successfully' };
-    } catch (error) {
-      this.logger.error(`Error joining room: ${error.message}`);
-      return { success: false, message: error.message };
-    }
+    // Nếu frontend gửi string thì dùng luôn, nếu gửi object thì lấy chatRoomId
+    const roomId = typeof data === 'string' ? data : data.chatRoomId;
+    client.join(roomId);
+    this.logger.log(`User ${client.data.userId} joined room ${roomId}`);
+    return { success: true };
   }
 
   @SubscribeMessage('leave_room')
   handleLeaveRoom(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { chatRoomId: string },
+    @MessageBody() data: { chatRoomId: string } | string,
   ) {
-    client.leave(data.chatRoomId);
-    this.logger.log(`User ${client.data.userId} left room ${data.chatRoomId}`);
-    return { success: true, message: 'Left room successfully' };
+    const roomId = typeof data === 'string' ? data : data.chatRoomId;
+    client.leave(roomId);
   }
 
   @SubscribeMessage('send_message')
-  async handleSendMessage(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() dto: SendMessageDto,
-  ) {
-    const userId = client.data.userId;
+async handleSendMessage(
+  @ConnectedSocket() client: Socket,
+  @MessageBody() dto: SendMessageDto,
+) {
+  const userId = client.data.userId;
+  try {
+    const message = await this.chatService.sendMessage(dto, userId);
 
-    try {
-      const message = await this.chatService.sendMessage(dto, userId);
-
-      // Emit tin nhắn đến tất cả người trong phòng
-      this.server.to(dto.chatRoomId).emit('new_message', message);
-
-      this.logger.log(`Message sent in room ${dto.chatRoomId}`);
-
-      return { success: true, message };
-    } catch (error) {
-      this.logger.error(`Error sending message: ${error.message}`);
-      return { success: false, message: error.message };
-    }
+    const roomId = String(dto.chatRoomId);
+    
+    // LOG ÄỂ DEBUG
+    console.log('🚀 Broadcasting to room:', roomId);
+    console.log('📦 Message data:', JSON.stringify(message, null, 2));
+    console.log('👥 Rooms in server:', Array.from(this.server.sockets.adapter.rooms.keys()));
+    
+    // Emit tới toàn bộ room (kể cả người gửi)
+    this.server.to(roomId).emit('receive_message', message);
+    
+    return { success: true, message };
+  } catch (error) {
+    this.logger.error(`❌ Error sending message: ${error.message}`);
+    return { success: false, message: error.message };
   }
+}
 
   @SubscribeMessage('typing')
   handleTyping(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { chatRoomId: string; isTyping: boolean },
   ) {
-    const userId = client.data.userId;
-    
-    client.to(data.chatRoomId).emit('user_typing', {
-      userId,
+    client.to(data.chatRoomId).emit('typing', {
+      userId: client.data.userId,
+      chatRoomId: data.chatRoomId,
       isTyping: data.isTyping,
     });
   }
@@ -135,5 +133,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.logger.error(`Error marking as read: ${error.message}`);
       return { success: false, message: error.message };
     }
+  }
+  broadcastMessage(chatRoomId: string, message: any) {
+    const roomId = String(chatRoomId);
+    this.server.to(roomId).emit('receive_message', message);
   }
 }

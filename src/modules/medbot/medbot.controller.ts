@@ -1,4 +1,4 @@
-import { Body, Controller, HttpStatus, Logger, Post, Req, HttpCode, UseGuards } from '@nestjs/common';
+import { Body, Controller, HttpStatus, Logger, Post, Req, HttpCode, UseGuards, Get, BadRequestException } from '@nestjs/common';
 import { ValidationPipe } from '../../pipes/validation.pipe';
 import { ApiResponse } from 'src/common/bases/api-reponse';
 import type { TApiReponse } from 'src/common/bases/api-reponse';
@@ -19,6 +19,22 @@ export class MedbotController {
     constructor(private readonly medbotService: MedbotService) {}
 
     @GuardType(GUARD)
+    @UseGuards(JwtAuthGuard, ActiveUserGuard, RolesGuard)
+    @Get('history') // <-- Endpoint là /history
+    @HttpCode(HttpStatus.OK)
+    async getHistory(@Req() req): Promise<TApiReponse<any>> {
+        // Kiểm tra xem req.user có tồn tại không
+        if (!req.user || !req.user.userId) {
+            throw new BadRequestException('User not found in request');
+        }
+        
+        const userId = req.user.userId;
+        const data = await this.medbotService.getChatHistory(userId);
+        
+        return ApiResponse.suscess(data, 'Success', HttpStatus.OK);
+    }
+    
+    @GuardType(GUARD)
     @UseGuards(JwtAuthGuard, ActiveUserGuard, RolesGuard) 
     @Roles('patient', 'doctor', 'admin') 
     @Post('chat')
@@ -38,4 +54,5 @@ export class MedbotController {
             HttpStatus.OK
         );
     }
+    
 }
