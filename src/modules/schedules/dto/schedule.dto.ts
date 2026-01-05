@@ -28,6 +28,9 @@ export class ScheduleDTO {
 
     @Expose()
     is_available: boolean;
+    
+    @Expose()
+    is_deleted: boolean;
 
     @Expose({ name: 'created_at' })
     @Transform(ToLocalISOString())

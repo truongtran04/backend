@@ -1,4 +1,4 @@
-import { Body, Controller, HttpStatus, Post, Req, HttpCode, Get, UseGuards, Param, Query } from '@nestjs/common';
+import { Body, Controller, HttpStatus, Post, Req, HttpCode, Get, UseGuards, Param, Query, Delete } from '@nestjs/common';
 import { ValidationPipe } from 'src/pipes/validation.pipe';
 import { ApiResponse, TApiReponse } from 'src/common/bases/api-reponse';
 import { common } from 'src/config/constant';
@@ -65,7 +65,7 @@ export class ScheduleController extends BaseController<DoctorSchedule, 'schedule
 
         return ApiResponse.suscess(
             dataTransform,
-            'Success',
+            'Tạo lịch thành công',
             HttpStatus.OK
         );
     }
@@ -81,6 +81,24 @@ export class ScheduleController extends BaseController<DoctorSchedule, 'schedule
         return ApiResponse.suscess(
             this.transformer.transformSingle(data, ScheduleDTO),
             'Success',
+            HttpStatus.CREATED
+        )
+    }
+
+    @GuardType(GUARD)
+    @UseGuards(JwtAuthGuard, ActiveUserGuard, RolesGuard)
+    @Roles('doctor')
+    @Delete(':id')
+    @HttpCode(HttpStatus.OK)
+    async destroy(
+        @Param('id') id: string,
+        @Req() req
+    ): Promise<TApiReponse<string>> {
+        const userId = req.user.userId
+        const data = await this.scheduleService.delete(id, userId);
+
+        return ApiResponse.message(
+            data.message,
             HttpStatus.CREATED
         )
     }

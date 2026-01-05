@@ -761,9 +761,9 @@ export class AuthService {
       throw new InternalServerErrorException('User chưa được tạo');
     }
 
-    const confirmOTP = randomBytes(32).toString('hex');
-    const hashedConfirmOTP = crypto.createHash('sha256').update(confirmOTP).digest('hex');
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 giờ
+    const confirmOTP = Math.floor(Math.random() * 1_000_000).toString().padStart(6, '0');
+    const hashedConfirmOTP = crypto.createHash('sha256').update(confirmOTP).digest('hex')
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000)
 
     context.confirmOTP = confirmOTP;
     context.hashedConfirmOTP = hashedConfirmOTP;
@@ -785,9 +785,9 @@ export class AuthService {
     }
 
     try {
-      await this.queueService.addJob<{email: string, token: string}>('send-verification-email', {
+      await this.queueService.addJob<{email: string, otp: string}>('send-verification-email', {
         email: context.user.email,
-        token: context.confirmOTP
+        otp: context.confirmOTP
       }, undefined);
 
       context.emailVerificationSent = true;
@@ -813,8 +813,8 @@ export class AuthService {
     return Promise.resolve({ message });
   }
 
-  async verifyEmail(token: string): Promise<{message: string}> {
-    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+  async verifyEmail(otp: string): Promise<{message: string}> {
+    const hashedToken = crypto.createHash('sha256').update(otp).digest('hex');
 
     const user = await this.userService.findUserByVerificationToken(hashedToken)
     if (!user) {
@@ -823,8 +823,8 @@ export class AuthService {
 
     const payload = {
       is_active: true,
-      passwordResetToken: null,
-      passwordResetTokenExpires: null
+      passwordResetOTP: null,
+      passwordResetOTPExpires: null
     }
  
     await this.userService.save(payload, user.user_id)

@@ -2,7 +2,7 @@ import { Injectable, Logger, NotFoundException, BadRequestException } from '@nes
 import { BaseService } from 'src/common/bases/base.service';
 import { PrismaService } from "../../prisma/prisma.service";
 import { ValidateService } from 'src/modules/validate/validate.service';
-import { DoctorSchedule } from '@prisma/client';
+import { AppointmentStatus, DoctorSchedule } from '@prisma/client';
 import { ScheduleRepository } from './schedule.repository';
 import { CreateScheduleDTO } from './dto/create-schedule.dto';
 import { UpdateScheduleDTO } from './dto/update-schedule.dto';
@@ -411,5 +411,52 @@ export class ScheduleService extends BaseService<ScheduleRepository, DoctorSched
         }
 
         return results;
+    }
+
+
+    async delete(id: string, userId: string): Promise<{ message: string }> {
+        const schedule = await this.findById(id);
+
+        if (!schedule) {
+            throw new BadRequestException("Không tìm thấy lịch khám");
+        }
+
+        const doctorId = await this.doctorService.getDoctorIdByUserId(userId);
+
+        if (doctorId !== schedule.doctor_id) {
+            throw new BadRequestException("Chỉ có bác sĩ tạo lịch khám này mới có thể xóa");
+        }
+
+        // Kiểm tra xem lịch này đã có appointment chưa
+        const hasAppointment = await this.checkHasActiveAppointment(schedule.schedule_id);
+        
+        if (hasAppointment) {
+            throw new BadRequestException(
+                "Không thể xóa lịch khám đã có cuộc hẹn. Vui lòng hủy cuộc hẹn trước."
+            );
+        }
+
+        try {
+            await this.save({is_deleted: true}, id);
+        } catch (error) {
+            console.error(error);
+            throw new BadRequestException("Không thể xóa lịch khám");
+        }
+
+        return { message: 'Xóa lịch khám thành công' };
+    }
+
+    private async checkHasActiveAppointment(scheduleId: string): Promise<boolean> {
+        const appointment = await this.prismaService.appointment.findFirst({
+            where: {
+                schedule_id: scheduleId,
+                // Chỉ tìm những cuộc hẹn có trạng thái KHÁC cancelled
+                status: {
+                    not: AppointmentStatus.cancelled, 
+                },
+            },
+        });
+
+        return !!appointment; 
     }
 }

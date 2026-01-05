@@ -8,7 +8,7 @@ import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { GuardType } from 'src/common/guards/jwt-auth.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { RolesGuard } from 'src/common/guards/roles.guard';
-import { Appointment } from '@prisma/client';
+import { Appointment, Doctor } from '@prisma/client';
 import { BaseController } from 'src/common/bases/base.controller';
 import { DataTransformer } from 'src/common/bases/data.transform';
 import { AppointmentService } from './appointment.service';
@@ -19,6 +19,8 @@ import { AppointmentStatus } from './appointment.interface';
 import { TModelOrPaginate } from 'src/common/bases/base.interface';
 import { IPaginateResult } from 'src/classes/query-builder.class';
 import { RELATIONS } from 'src/common/constants/relations.constant';
+import { PatientService } from '../patients/patient.service';
+import { DoctorService } from '../doctors/doctor.service';
 
 const GUARD = common.admin
 
@@ -29,6 +31,8 @@ export class AppointmentController extends BaseController<Appointment, 'appointm
     
     constructor(
         private readonly appointmentService: AppointmentService,
+        private readonly patientService: PatientService,
+        private readonly doctorService: DoctorService,
         private readonly transformer: DataTransformer<Appointment, AppointmentDTO>
     ) {
         super(appointmentService, 'appointment_id');
@@ -61,7 +65,7 @@ export class AppointmentController extends BaseController<Appointment, 'appointm
         @Query() query: Record<string, any>,
     ) : Promise<TApiReponse<AppointmentDTO[]>> {
 
-        const doctorId = req.user.doctorId;
+        const doctorId = await this.doctorService.getDoctorIdByUserId(req.user.userId);
 
         const data: Appointment[] = await this.appointmentService.showAll({
             ...query,
@@ -84,8 +88,8 @@ export class AppointmentController extends BaseController<Appointment, 'appointm
         @Query() query: Record<string, any>,
         @Req() req
     ) : Promise<TApiReponse<TModelOrPaginate<AppointmentDTO>>> {
-
-        const patientId = req.user.patientId;
+        
+        const patientId = await this.patientService.findByUserId(req.user.userId);
 
         const data: Appointment[] = await this.appointmentService.showAll({
             ...query,
@@ -191,13 +195,11 @@ export class AppointmentController extends BaseController<Appointment, 'appointm
     @HttpCode(HttpStatus.OK)
     async showAppointmentBySchedule(
         @Param('id') id: string,
-        @Req() req
     ) : Promise<TApiReponse<AppointmentDTO>> {
 
-        const roleGroup = req.user.role;
         const data: Appointment = await this.appointmentService.getAppointmentBySchedule(id)
         return ApiResponse.suscess(
-            this.transformer.transformSingle(data, AppointmentDTO, [roleGroup]),
+            this.transformer.transformSingle(data, AppointmentDTO),
             'Success', 
             HttpStatus.OK
         )

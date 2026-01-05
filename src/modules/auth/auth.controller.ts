@@ -12,7 +12,7 @@ import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { GuardType } from 'src/common/guards/jwt-auth.guard';
 import { IUserResponse } from '../users/user.interface';
 import { ForgotPasswordDTO } from './dto/forgot-password.dto';
-import { ResetPasswordRequest } from './dto/reset-password.dto';
+import { ResetPasswordRequest, VerifyEmailRequest } from './dto/reset-password.dto';
 import { RegisterDTO } from './dto/register.dto';
 import { DoctorService } from '../doctors/doctor.service';
 import { PatientService } from '../patients/patient.service';
@@ -135,12 +135,12 @@ export class AuthController {
     return ApiResponse.message(res.message, HttpStatus.OK)
   }
 
-  @Get('/verify-email/:token')
+  @Post('/verify-email')
   @HttpCode(HttpStatus.OK)
   async verifyEmail(
-    @Param('token') token: string
+    @Body(new ValidationPipe()) verifyEmailRequest: VerifyEmailRequest
   ): Promise<TApiReponse<string>> {
-    const res = await this.authService.verifyEmail(token);
+    const res = await this.authService.verifyEmail(verifyEmailRequest.otp);
     return ApiResponse.message(res.message, HttpStatus.OK);
   }
 

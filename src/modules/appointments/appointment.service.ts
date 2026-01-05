@@ -76,12 +76,23 @@ export class AppointmentService extends BaseService<AppointmentRepository, Appoi
 
         const patientId = await this.getPatientId(payload)
         
-        const existing = await this.findByField('schedule_id', request.schedule_id)
+        const activeAppointment = await this.prismaService.appointment.findFirst({
+            where: {
+                schedule_id: request.schedule_id,
+                status: {
+                in: [
+                        AppointmentStatus.PENDING,
+                        AppointmentStatus.CONFIRM,
+                        AppointmentStatus.COMPLETE,
+                        AppointmentStatus.NO_SHOW
+                    ],
+                },
+            },
+        });
 
-        if (existing) {
-            throw new BadRequestException("Lịch khám đã tồn tại")
+        if (activeAppointment) {
+            throw new BadRequestException("Lịch khám đã được đặt");
         }
-
         const doctor = await this.doctorService.findById(request.doctor_id)
 
         if (!doctor || doctor.is_available === false) {
@@ -301,20 +312,10 @@ export class AppointmentService extends BaseService<AppointmentRepository, Appoi
     }
 
     private async checkValidateAppointment(id: string, payload: IAuthUser, nextStatus: AppointmentStatus): Promise<Appointment> {
-        const doctor = await this.doctorService.findByField('user_id', payload.userId);
-        if (!doctor) {
-            throw new BadRequestException("Không tìm thấy bác sĩ");
-        }
-
+        
         const appointment = await this.findById(id);
         if (!appointment) {
             throw new BadRequestException("Không tìm thấy cuộc hẹn");
-        }
-
-        const schedule = await this.scheduleService.findById(appointment.schedule_id);
-
-        if (!schedule || schedule.doctor_id !== doctor.doctor_id) {
-            throw new BadRequestException("Bác sĩ không có lịch khám cho cuộc hẹn này");
         }
 
         const allowedNextStatuses =
@@ -326,8 +327,31 @@ export class AppointmentService extends BaseService<AppointmentRepository, Appoi
             );
         }
 
+        if (nextStatus === AppointmentStatus.COMPLETE) {
+            await this.validateCompletionTime(appointment);
+        }
 
         return appointment
+    }
+
+    private async validateCompletionTime(appointment: Appointment): Promise<void> {
+        // Lấy thông tin lịch khám để biết thời gian khám
+        const schedule = await this.scheduleService.findById(appointment.schedule_id);
+        
+        if (!schedule) {
+            throw new BadRequestException("Không tìm thấy lịch khám");
+        }
+
+        // end_time đã là DateTime, so sánh trực tiếp
+        const appointmentEndTime = new Date(schedule.end_time);
+        const currentTime = new Date();
+
+        // Kiểm tra nếu chưa qua khung giờ khám
+        if (currentTime < appointmentEndTime) {
+            throw new BadRequestException(
+                "Không thể hoàn thành cuộc hẹn khi chưa qua khung giờ khám"
+            );
+        }
     }
 
     async updateAppointmentStatus(id: string, payload: IAuthUser, statusMessage: StatusMessage): Promise<{ message: string }> {

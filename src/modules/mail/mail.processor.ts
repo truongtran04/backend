@@ -24,13 +24,13 @@ export class EmailProcessor {
     } 
 
     @Process('send-verification-email')
-    async handleSendVerificationEmail(job: Job<{email: string, token: string}>): Promise<void>{
-        this.logger.log(`Bắt đầu xử lý email đặt lại mật khẩu cho job: ${job.data.email}`)
+    async handleSendVerificationEmail(job: Job<{email: string, otp: string}>): Promise<void>{
+        this.logger.log(`Bắt đầu xử lý email xác thực cho job: ${job.data.email}`)
         try {
-            await this.mailService.sendVerificationEmail(job.data.email, job.data.token)
+            await this.mailService.sendVerificationEmail(job.data.email, job.data.otp)
 
         } catch (error) {
-            this.logger.error(`Lỗi khi gửi email đặt lại mật khẩu cho ${job.data.email}: ${error instanceof Error ? error.message : 'Không xác định'}`)
+            this.logger.error(`Lỗi khi gửi email xác thực cho ${job.data.email}: ${error instanceof Error ? error.message : 'Không xác định'}`)
             throw error
         }
     } 

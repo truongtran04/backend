@@ -70,6 +70,8 @@ model Patient {
   
   User         User          @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
   Appointments Appointment[]
+  Ratings      DoctorRating[]
+  Reviews      DoctorReview[]
 
   @@index([phone_number])
   @@index([identity_number])
@@ -106,6 +108,8 @@ model Doctor {
   achievements         String?                                            // Thành tích, công trình nghiên cứu, giải thưởng
   avatar_url           String?                                            // Đường dẫn ảnh đại diện của bác sĩ
   is_available     Boolean          @default(true)
+  average_rating   Float?           @default(0)                           // Đánh giá trung bình của bác sĩ (từ 0-5)
+  total_reviews    Int              @default(0)                           // Tổng số lượt đánh giá/nhận xét
   created_at       DateTime         @default(now())
   updated_at       DateTime         @updatedAt
   
@@ -113,9 +117,12 @@ model Doctor {
   Specialty    Specialty        @relation(fields: [specialty_id], references: [specialty_id])
   Schedules    DoctorSchedule[]
   Appointments Appointment[]
+  Ratings      DoctorRating[]
+  Reviews      DoctorReview[]
 
   @@index([specialty_id])
   @@index([is_available])
+  @@index([average_rating])
 
   @@map("doctors")
 }
@@ -127,6 +134,7 @@ model DoctorSchedule {
   start_time    DateTime
   end_time      DateTime
   is_available  Boolean       @default(true)
+  is_deleted    Boolean       @default(false)
   created_at    DateTime      @default(now())
   updated_at    DateTime      @updatedAt
   
@@ -151,18 +159,18 @@ model Appointment {
   cancellation_reason String?
   created_at         DateTime          @default(now())
   updated_at         DateTime          @updatedAt
-  
+
   Patient        Patient        @relation(fields: [patient_id], references: [patient_id])
   Doctor         Doctor         @relation(fields: [doctor_id], references: [doctor_id])
   DoctorSchedule DoctorSchedule @relation(fields: [schedule_id], references: [schedule_id])
 
-  @@unique([schedule_id])
   @@index([patient_id])
   @@index([doctor_id])
   @@index([status])
 
   @@map("appointments")
 }
+
 
 model ChatRoom {
   id              String           @id @default(uuid())
@@ -222,5 +230,66 @@ model ChatMessage {
   @@index([chatRoomId, senderId, createdAt])
   @@index([senderId])
   @@map("chat_messages")
+}
+
+
+model DoctorRating {
+  rating_id    String   @id @default(uuid())
+  doctor_id    String
+  patient_id   String
+  rating_score Int
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+  
+  Doctor Doctor @relation(fields: [doctor_id], references: [doctor_id], onDelete: Cascade)
+  Patient Patient @relation(fields: [patient_id], references: [patient_id], onDelete: Cascade)
+
+  @@unique([doctor_id, patient_id]) 
+  @@index([doctor_id])
+  @@index([patient_id])
+  @@index([rating_score])
+
+  @@map("doctor_ratings")
+}
+
+model DoctorReview {
+  review_id    String   @id @default(uuid())
+  doctor_id    String
+  patient_id   String
+  title        String?                                            // Tiêu đề của bài nhận xét
+  content      String                                             // Nội dung nhận xét chi tiết
+  rating_score Int      // Điểm đánh giá từ 1-5 sao (có thể khác với DoctorRating)
+  helpful_count Int     @default(0)                               // Số người tìm thấy bình luận này hữu ích
+  is_verified  Boolean  @default(true)                            // Xác nhận bệnh nhân đã từng khám với bác sĩ
+  doctor_reply String?                                            // Phản hồi của bác sĩ cho bài nhận xét
+  reply_at     DateTime?                                          // Thời điểm bác sĩ phản hồi
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+  
+  Doctor Doctor @relation(fields: [doctor_id], references: [doctor_id], onDelete: Cascade)
+  Patient Patient @relation(fields: [patient_id], references: [patient_id], onDelete: Cascade)
+
+  @@index([doctor_id])
+  @@index([patient_id])
+  @@index([rating_score])
+  @@index([created_at])
+  @@index([helpful_count])
+
+  @@map("doctor_reviews")
+}
+
+model ReviewHelpful {
+  id          String   @id @default(uuid())
+  review_id   String
+  patient_id  String
+  is_helpful  Boolean  @default(true)                             // true = hữu ích, false = không hữu ích
+  created_at  DateTime @default(now())
+  
+  // Không có foreign key vì review và patient có thể bị xóa
+  @@unique([review_id, patient_id])                              // Mỗi bệnh nhân chỉ có thể vote 1 lần cho 1 bài đánh giá
+  @@index([review_id])
+  @@index([patient_id])
+
+  @@map("review_helpful")
 }
 

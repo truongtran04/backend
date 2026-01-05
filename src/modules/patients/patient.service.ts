@@ -122,4 +122,14 @@ export class PatientService extends BaseService<PatientRepository, Patient> {
         }
         return patient.user_id
     }
+
+    async findByUserId(userId: string): Promise<string> {
+        const patient = await this.patientRepository.findByField('user_id', userId)
+
+        if (!patient) {
+            throw new BadRequestException('Không tìm thấy bệnh nhân với id này');
+        }
+
+        return patient.patient_id
+    }
 }

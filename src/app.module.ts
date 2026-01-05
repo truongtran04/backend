@@ -19,6 +19,7 @@ import { AppointmentModule } from './modules/appointments/appointment.module';
 import { SupabaseModule } from './modules/supabase/supabase.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { MedbotModule } from './modules/medbot/medbot.module';
+import { RatingModule } from './modules/ratings/rating.module';
 @Module({
   imports: [
     MedbotModule,
@@ -35,6 +36,7 @@ import { MedbotModule } from './modules/medbot/medbot.module';
     ScheduleModule,
     AppointmentModule,
     SupabaseModule,
+    RatingModule,
     ConfigModule.forRoot({
       isGlobal: true,
     }),

@@ -32,3 +32,11 @@ export class ResetPasswordRequest {
     confirmPassword: string;
 
 }
+
+export class VerifyEmailRequest {
+
+    @IsString({message: "Token phải là kiểu chuỗi"})
+    @IsNotEmpty({message: "Token không được để trống"})
+    otp: string;
+
+}
