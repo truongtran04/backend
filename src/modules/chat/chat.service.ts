@@ -1,7 +1,8 @@
-import { Injectable, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, Logger, forwardRef, Inject } from '@nestjs/common';
 import { ChatRepository } from './chat.repository';
 import { CreateChatRoomDto, SendMessageDto, UpdateMessageDto } from './dto';
 import { ConversationType } from '@prisma/client';
+import { ChatGateway } from './chat.gateway';
 
 @Injectable()
 export class ChatService {
@@ -9,6 +10,9 @@ export class ChatService {
 
   constructor(
     private readonly chatRepository: ChatRepository,
+    // Inject Gateway vào đây
+    @Inject(forwardRef(() => ChatGateway))
+    private readonly chatGateway: ChatGateway,
   ) { }
 
   /**
@@ -70,12 +74,18 @@ export class ChatService {
   /**
    * Gửi message
    */
-  async sendMessage(dto: SendMessageDto, userId: string) {
-    return await this.chatRepository.createMessage(
+   async sendMessage(dto: SendMessageDto, userId: string) {
+    // 1. Lưu vào Database
+    const message = await this.chatRepository.createMessage(
       userId,
       dto.chatRoomId,
       dto.content,
     );
+
+    // 2. Bắn Socket ngay lập tức
+    this.chatGateway.broadcastMessage(dto.chatRoomId, message);
+
+    return message;
   }
 
   /**

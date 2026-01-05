@@ -5,6 +5,7 @@ import { PythonClassifyPayload, PythonDiagnoseResponse, PythonIntentResponse } f
 import { DoctorService } from '../doctors/doctor.service';
 import { AppointmentService } from '../appointments/appointment.service'; // Giả sử bạn có service này
 import { SpecialtyService } from '../specialties/specialty.service';
+import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
 export class MedbotService {
@@ -13,8 +14,18 @@ export class MedbotService {
     private readonly doctorService: DoctorService,
     private readonly specialtyService: SpecialtyService,
     private readonly appointmentService: AppointmentService,
+     private readonly prisma: PrismaService,
   ) {}
-
+  private async saveMessage(userId: string, role: 'user' | 'bot', content: string, metaData: any = null) {
+    await this.prisma.medbotHistory.create({
+      data: {
+        user_id: userId,
+        role,
+        content,
+        meta_data: metaData || {}, // Lưu JSON vào đây
+      }
+    });
+  }
   // --- HÀM CHÍNH: Xử lý tin nhắn User ---
   async processUserMessage(text: string, userId: number = 1) { // Thêm userId để đặt lịch
     try {
@@ -122,5 +133,11 @@ export class MedbotService {
       console.error("Error calling Python Diagnose:", (error as Error).message);
       throw new HttpException('AI Service unavailable', HttpStatus.BAD_GATEWAY);
     }
+  }
+  async getChatHistory(userId: string) {
+    return await this.prisma.medbotHistory.findMany({ 
+      orderBy: { created_at: 'asc' },
+      take: 50
+    });
   }
 }

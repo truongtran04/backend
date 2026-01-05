@@ -7,6 +7,187 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  user_id                 String            @id @default(uuid())
+  email                   String            @unique
+  password_hash           String
+  role                    Role              @default(patient)
+  is_active               Boolean           @default(true)
+  created_at              DateTime          @default(now())
+  updated_at              DateTime          @updatedAt
+  passwordResetOTP        String?
+  passwordResetOTPExpires DateTime?
+  ChatMessage             ChatMessage[]
+  ChatParticipant         ChatParticipant[]
+  Doctor                  Doctor?
+  MedbotHistory           MedbotHistory[]
+  Patient                 Patient?
+
+  @@map("users")
+}
+
+model Patient {
+  patient_id              String        @id @default(uuid())
+  user_id                 String        @unique
+  full_name               String
+  identity_number         String?       @unique
+  phone_number            String
+  date_of_birth           DateTime
+  gender                  Gender
+  address                 String?
+  ethnicity               String?
+  health_insurance_number String?
+  referral_code           String?
+  occupation              String?
+  created_at              DateTime      @default(now())
+  updated_at              DateTime      @updatedAt
+  Appointments            Appointment[]
+  User                    User          @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@index([phone_number])
+  @@index([identity_number])
+  @@map("patients")
+}
+
+model Specialty {
+  specialty_id String   @id @default(uuid())
+  name         String   @unique
+  description  String?
+  image_url    String?
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+  Doctors      Doctor[]
+
+  @@map("specialties")
+}
+
+model Doctor {
+  doctor_id        String           @id @default(uuid())
+  user_id          String           @unique
+  specialty_id     String
+  full_name        String
+  title            String?
+  introduction     String?
+  avatar_url       String?
+  specializations  String?
+  achievements     String?
+  experience_years Int?
+  is_available     Boolean          @default(true)
+  created_at       DateTime         @default(now())
+  updated_at       DateTime         @updatedAt
+  clinic_address   String?
+  position         String?
+  workplace        String?
+  Appointments     Appointment[]
+  Schedules        DoctorSchedule[]
+  Specialty        Specialty        @relation(fields: [specialty_id], references: [specialty_id])
+  User             User             @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@index([specialty_id])
+  @@index([is_available])
+  @@map("doctors")
+}
+
+model DoctorSchedule {
+  schedule_id   String       @id @default(uuid())
+  doctor_id     String
+  schedule_date DateTime
+  is_available  Boolean      @default(true)
+  created_at    DateTime     @default(now())
+  updated_at    DateTime     @updatedAt
+  start_time    DateTime
+  end_time      DateTime
+  Appointments  Appointment?
+  Doctor        Doctor       @relation(fields: [doctor_id], references: [doctor_id], onDelete: Cascade)
+
+  @@unique([doctor_id, schedule_date, start_time])
+  @@index([doctor_id, schedule_date])
+  @@index([schedule_date, is_available])
+  @@map("doctor_schedules")
+}
+
+model Appointment {
+  appointment_id      String            @id @default(uuid())
+  patient_id          String
+  doctor_id           String
+  schedule_id         String            @unique
+  symptoms            String?
+  notes               String?
+  status              AppointmentStatus @default(pending)
+  cancellation_reason String?
+  created_at          DateTime          @default(now())
+  updated_at          DateTime          @updatedAt
+  Doctor              Doctor            @relation(fields: [doctor_id], references: [doctor_id])
+  Patient             Patient           @relation(fields: [patient_id], references: [patient_id])
+  DoctorSchedule      DoctorSchedule    @relation(fields: [schedule_id], references: [schedule_id])
+
+  @@index([patient_id])
+  @@index([doctor_id])
+  @@index([status])
+  @@map("appointments")
+}
+
+model ChatRoom {
+  id            String            @id @default(uuid())
+  type          ConversationType  @default(patient_doctor)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  lastMessageAt DateTime?
+  messages      ChatMessage[]     @relation("RoomMessages")
+  participants  ChatParticipant[]
+
+  @@index([type])
+  @@index([lastMessageAt])
+  @@map("chat_rooms")
+}
+
+model ChatParticipant {
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  userId            String
+  chatRoomId        String
+  lastReadMessageId String?
+  lastReadAt        DateTime?
+  chatRoom          ChatRoom  @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  user              User      @relation(fields: [userId], references: [user_id], onDelete: Cascade)
+
+  @@id([userId, chatRoomId])
+  @@index([chatRoomId])
+  @@map("chat_participants")
+}
+
+model ChatMessage {
+  id         String   @id @default(uuid())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  content    String
+  isEdited   Boolean  @default(false)
+  isDeleted  Boolean  @default(false)
+  senderId   String
+  chatRoomId String
+  chatRoom   ChatRoom @relation("RoomMessages", fields: [chatRoomId], references: [id], onDelete: Cascade)
+  sender     User     @relation(fields: [senderId], references: [user_id], onDelete: Cascade)
+
+  @@index([chatRoomId, createdAt])
+  @@index([chatRoomId, senderId, createdAt])
+  @@index([senderId])
+  @@map("chat_messages")
+}
+
+model MedbotHistory {
+  id         String   @id @default(uuid())
+  user_id    String
+  role       String
+  content    String
+  meta_data  Json?
+  created_at DateTime @default(now())
+  User       User     @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([created_at])
+  @@map("medbot_histories")
+}
+
 enum AppointmentStatus {
   pending
   confirmed
@@ -31,196 +212,3 @@ enum Gender {
   female
   other
 }
-
-model User {
-  user_id       String   @id @default(uuid())
-  email         String   @unique
-  password_hash String
-  role          Role     @default(patient)
-  is_active     Boolean  @default(true)
-  created_at    DateTime @default(now())
-  updated_at    DateTime @updatedAt
-
-  passwordResetOTP String?
-  passwordResetOTPExpires DateTime?
-  
-  Patient Patient?
-  Doctor  Doctor?
-  ChatParticipant ChatParticipant[]
-  ChatMessage     ChatMessage[]
-
-  @@map("users")
-}
-
-model Patient {
-  patient_id              String        @id @default(uuid())
-  user_id                 String        @unique
-  full_name               String
-  identity_number         String?        @unique
-  phone_number            String
-  date_of_birth           DateTime
-  gender                  Gender
-  address                 String?
-  ethnicity               String?
-  health_insurance_number String?
-  referral_code           String?
-  occupation              String?
-  created_at              DateTime      @default(now())
-  updated_at              DateTime      @updatedAt
-  
-  User         User          @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
-  Appointments Appointment[]
-
-  @@index([phone_number])
-  @@index([identity_number])
-
-  @@map("patients")
-}
-
-  model Specialty {
-    specialty_id   String         @id @default(uuid())
-    name           String         @unique
-    description    String?
-    image_url      String?
-    created_at     DateTime       @default(now())
-    updated_at     DateTime       @updatedAt
-    
-    Doctors        Doctor[]
-
-    @@map("specialties")
-  }
-
-
-model Doctor {
-  doctor_id        String           @id @default(uuid())
-  user_id          String           @unique
-  specialty_id     String
-  full_name            String                                             // Họ và tên đầy đủ của bác sĩ
-  title                String?                                            // Học vị hoặc chức danh (VD: ThS.BS, PGS.TS, ...)
-  experience_years     Int?                                               // Số năm kinh nghiệm hành nghề
-  specializations      String?                                            // Các lĩnh vực chuyên môn (VD: Nội tổng quát, Tim mạch)
-  position             String?                                            // Vị trí hoặc chức vụ (VD: Trưởng khoa, Bác sĩ điều trị)
-  workplace            String?                                            // Nơi làm việc chính (VD: Bệnh viện Bạch Mai)
-  clinic_address       String?                                            // Địa chỉ phòng khám hoặc nơi tiếp bệnh
-  introduction         String?                                            // Giới thiệu ngắn gọn về bác sĩ
-  achievements         String?                                            // Thành tích, công trình nghiên cứu, giải thưởng
-  avatar_url           String?                                            // Đường dẫn ảnh đại diện của bác sĩ
-  is_available     Boolean          @default(true)
-  created_at       DateTime         @default(now())
-  updated_at       DateTime         @updatedAt
-  
-  User         User             @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
-  Specialty    Specialty        @relation(fields: [specialty_id], references: [specialty_id])
-  Schedules    DoctorSchedule[]
-  Appointments Appointment[]
-
-  @@index([specialty_id])
-  @@index([is_available])
-
-  @@map("doctors")
-}
-
-model DoctorSchedule {
-  schedule_id   String        @id @default(uuid())
-  doctor_id     String
-  schedule_date DateTime
-  start_time    DateTime
-  end_time      DateTime
-  is_available  Boolean       @default(true)
-  created_at    DateTime      @default(now())
-  updated_at    DateTime      @updatedAt
-  
-  Doctor       Doctor        @relation(fields: [doctor_id], references: [doctor_id], onDelete: Cascade)
-  Appointments Appointment[]
-  
-  @@unique([doctor_id, schedule_date, start_time])
-  @@index([doctor_id, schedule_date])
-  @@index([schedule_date, is_available])
-
-  @@map("doctor_schedules")
-}
-
-model Appointment {
-  appointment_id     String            @id @default(uuid())
-  patient_id         String
-  doctor_id          String
-  schedule_id        String
-  symptoms           String?
-  notes              String?
-  status             AppointmentStatus @default(pending)
-  cancellation_reason String?
-  created_at         DateTime          @default(now())
-  updated_at         DateTime          @updatedAt
-  
-  Patient        Patient        @relation(fields: [patient_id], references: [patient_id])
-  Doctor         Doctor         @relation(fields: [doctor_id], references: [doctor_id])
-  DoctorSchedule DoctorSchedule @relation(fields: [schedule_id], references: [schedule_id])
-
-  @@unique([schedule_id])
-  @@index([patient_id])
-  @@index([doctor_id])
-  @@index([status])
-
-  @@map("appointments")
-}
-
-model ChatRoom {
-  id              String           @id @default(uuid())
-  type            ConversationType @default(patient_doctor)
-
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-
-  lastMessageAt   DateTime?
-
-  participants    ChatParticipant[]
-  messages        ChatMessage[]    @relation("RoomMessages")
-
-  @@index([type])
-  @@index([lastMessageAt])
-  @@map("chat_rooms")
-}
-
-
-
-
-model ChatParticipant {
-  userId     String
-  chatRoomId String
-
-  user       User     @relation(fields: [userId], references: [user_id], onDelete: Cascade)
-  chatRoom   ChatRoom @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
-
-  lastReadMessageId String?
-  lastReadAt        DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@id([userId, chatRoomId])
-  @@index([chatRoomId])
-  @@map("chat_participants")
-}
-
-model ChatMessage {
-  id         String   @id @default(uuid())
-  content    String
-
-  isEdited   Boolean  @default(false)
-  isDeleted  Boolean  @default(false)
-
-  senderId   String
-  chatRoomId String
-
-  sender     User     @relation(fields: [senderId], references: [user_id], onDelete: Cascade)
-  chatRoom   ChatRoom @relation(name: "RoomMessages", fields: [chatRoomId], references: [id], onDelete: Cascade)
-
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  @@index([chatRoomId, createdAt])
-  @@index([chatRoomId, senderId, createdAt])
-  @@index([senderId])
-  @@map("chat_messages")
-}
-
